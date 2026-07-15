@@ -8,8 +8,8 @@
 <title>Orca Logger</title>
 <link rel="manifest" href="manifest.json">
 <style>
-:root{--bg:#faf9f5;--surf:#fff;--txt:#1a1a18;--txt2:#5f5e5a;--txt3:#8a8980;--bd:#e0ded6;--acc:#185fa5;}
-@media(prefers-color-scheme:dark){:root{--bg:#1a1a18;--surf:#2c2c2a;--txt:#f2f0e9;--txt2:#b4b2a9;--txt3:#888780;--bd:#444441;--acc:#85b7eb;}}
+:root{--bg:#faf9f5;--surf:#fff;--txt:#1a1a18;--txt2:#5f5e5a;--bd:#e0ded6;--acc:#185fa5;}
+@media(prefers-color-scheme:dark){:root{--bg:#1a1a18;--surf:#2c2c2a;--txt:#f2f0e9;--txt2:#b4b2a9;--bd:#444441;--acc:#85b7eb;}}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
 body{margin:0;font-family:-apple-system,system-ui,sans-serif;background:var(--bg);color:var(--txt);padding:16px;line-height:1.5;max-width:560px;margin:0 auto;}
 h1{font-size:18px;font-weight:500;margin:0 0 12px;}
@@ -55,11 +55,60 @@ label{font-size:14px;color:var(--txt2);}
 </div>
 <script>
 const S=360,C=180,R=150,svg=document.getElementById('plot');
+const dark=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;
+const GRID=dark?'#555':'#ccc',NUM=dark?'#b4b2a9':'#5f5e5a',FAINT=dark?'#888':'#999',RING=dark?'#2c2c2a':'#fff';
 const COLORS=['#185fa5','#d85a30','#1d9e75','#d4537e','#ba7517','#7f77dd','#639922','#e24b4a','#0f6e56','#993556'];
 let cur=[],log=JSON.parse(localStorage.getItem('orcaLog')||'[]'),mode='csv';
 const maxd=()=>Math.max(50,+document.getElementById('maxd').value||1000);
 function ns(t,a){const e=document.createElementNS('http://www.w3.org/2000/svg',t);for(k in a)e.setAttribute(k,a[k]);return e;}
 function grid(){svg.innerHTML='';const md=maxd();
-  for(let i=1;i<=5;i++){const rr=R*i/5;svg.appendChild(ns('circle',{cx:C,cy:C,r:rr,fill:'none',stroke:'var(--bd)','stroke-width':'0.5'}));
-    const t=ns('text',{x:C+2,y:C-rr+11,'font-size':'9',fill:'var(--txt3)'});t.textContent=Math.round(md*i/5)+'m';svg.appendChild(t);}
+  for(let i=1;i<=5;i++){const rr=R*i/5;svg.appendChild(ns('circle',{cx:C,cy:C,r:rr,fill:'none',stroke:GRID,'stroke-width':'1'}));
+    const t=ns('text',{x:C+3,y:C-rr+12,'font-size':'10',fill:FAINT});t.textContent=Math.round(md*i/5)+'m';svg.appendChild(t);}
   for(let h=1;h<=12;h++){const a=(h*30-90)*Math.PI/180,x=C+R*Math.cos(a),y=C+R*Math.sin(a);
+    svg.appendChild(ns('line',{x1:C,y1:C,x2:x,y2:y,stroke:GRID,'stroke-width':'1'}));
+    const lx=C+(R+11)*Math.cos(a),ly=C+(R+11)*Math.sin(a);
+    const t=ns('text',{x:lx,y:ly+4,'font-size':'12',fill:NUM,'text-anchor':'middle'});t.textContent=h;svg.appendChild(t);}
+  const b=ns('text',{x:C,y:15,'font-size':'10',fill:FAINT,'text-anchor':'middle'});b.textContent='bow';svg.appendChild(b);
+  cur.forEach(g=>{svg.appendChild(ns('circle',{cx:g.px,cy:g.py,r:12,fill:g.color,stroke:RING,'stroke-width':'2'}));
+    const t=ns('text',{x:g.px,y:g.py+4,'font-size':'12',fill:'#fff','text-anchor':'middle','font-weight':'700'});t.textContent=g.size;svg.appendChild(t);});}
+function conv(px,py){const dx=px-C,dy=py-C,rp=Math.hypot(dx,dy);let deg=Math.atan2(dx,-dy)*180/Math.PI;if(deg<0)deg+=360;
+  let ch=Math.round(deg/30);if(ch===0)ch=12;return{dist:Math.round(Math.min(rp/R,1)*maxd()),bearing:Math.round(deg),clock:ch};}
+function pt(ev){const r=svg.getBoundingClientRect(),e=ev.touches?ev.touches[0]:ev;return{px:(e.clientX-r.left)/r.width*S,py:(e.clientY-r.top)/r.height*S};}
+function add(ev){ev.preventDefault();const p=pt(ev);if(Math.hypot(p.px-C,p.py-C)>R)return;
+  cur.push({px:p.px,py:p.py,size:1,color:COLORS[cur.length%COLORS.length],...conv(p.px,p.py)});grid();list();}
+svg.addEventListener('touchend',add,{passive:false});svg.addEventListener('click',add);
+function list(){const d=document.getElementById('groups');d.innerHTML='';
+  document.getElementById('sel').textContent=cur.length?cur.length+' group(s) this scan':'Tap the plot to add a group.';
+  cur.forEach((g,i)=>{const row=document.createElement('div');row.className='grp';
+    const sw=document.createElement('span');sw.className='dot';sw.style.background=g.color;
+    const lab=document.createElement('span');lab.style.cssText='flex:1;color:var(--txt2);';lab.textContent=g.dist+'m · '+g.clock+" o'clock";
+    const mk=(t,f)=>{const b=document.createElement('button');b.textContent=t;b.style.padding='4px 12px';b.onclick=f;return b;};
+    const n=document.createElement('span');n.textContent=g.size;n.style.cssText='min-width:22px;text-align:center;font-weight:500;';
+    row.append(sw,lab,mk('−',()=>{g.size=Math.max(1,g.size-1);grid();list();}),n,mk('+',()=>{g.size++;grid();list();}),mk('✕',()=>{cur.splice(i,1);recolor();grid();list();}));
+    d.appendChild(row);});}
+function recolor(){cur.forEach((g,i)=>g.color=COLORS[i%COLORS.length]);}
+function upd(){document.getElementById('count').textContent=log.length+' scans saved';}
+document.getElementById('save').onclick=()=>{if(!cur.length)return;
+  const hd=document.getElementById('hdg').value;
+  log.push({ts:new Date().toISOString(),max_dist_m:maxd(),boat_heading_deg:hd===''?null:+hd,
+    groups:cur.map(g=>({dist_m:g.dist,clock:g.clock,bearing_deg:g.bearing,size:g.size}))});
+  localStorage.setItem('orcaLog',JSON.stringify(log));cur=[];grid();list();upd();};
+document.getElementById('undo').onclick=()=>{cur.pop();grid();list();};
+document.getElementById('clear').onclick=()=>{cur=[];grid();list();};
+document.getElementById('maxd').onchange=grid;
+function toCSV(){let r=['scan_ts,boat_heading_deg,group_n,distance_m,clock_hour,rel_bearing_deg,group_size'];
+  log.forEach(s=>s.groups.forEach((g,i)=>r.push([s.ts,s.boat_heading_deg??'',i+1,g.dist_m,g.clock,g.bearing_deg,g.size].join(','))));return r.join('\n');}
+function flash(t){const m=document.getElementById('msg');m.textContent=t;setTimeout(()=>m.textContent='',2500);}
+document.getElementById('csv').onclick=()=>{mode='csv';document.getElementById('out').value=toCSV()||'(no scans saved yet)';};
+document.getElementById('json').onclick=()=>{mode='json';document.getElementById('out').value=JSON.stringify(log,null,2);};
+document.getElementById('copy').onclick=async()=>{const ta=document.getElementById('out');if(!ta.value)return flash('Show CSV or JSON first');
+  try{await navigator.clipboard.writeText(ta.value);flash('Copied ✓');}catch(e){ta.focus();ta.select();document.execCommand('copy');flash('Copied ✓');}};
+document.getElementById('share').onclick=async()=>{const txt=mode==='json'?JSON.stringify(log,null,2):toCSV();if(!txt)return flash('Nothing to share yet');
+  const name='orca_scans.'+mode,type=mode==='json'?'application/json':'text/csv';
+  try{const f=new File([txt],name,{type});if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],title:name});return;}}catch(e){}
+  try{const u=URL.createObjectURL(new Blob([txt],{type}));const a=document.createElement('a');a.href=u;a.download=name;a.click();URL.revokeObjectURL(u);}catch(e){flash('Use Copy instead');}};
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js');
+grid();list();upd();
+</script>
+</body>
+</html>
