@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ship Track Viewer</title>
+<style>
+:root{--bg:#faf9f5;--surf:#fff;--txt:#1a1a18;--txt2:#5f5e5a;--bd:#e0ded6;--acc:#185fa5;--accbg:#e6f1fb;}
+@media(prefers-color-scheme:dark){:root{--bg:#1a1a18;--surf:#2c2c2a;--txt:#f2f0e9;--txt2:#b4b2a9;--bd:#444441;--acc:#85b7eb;--accbg:#0c447c;}}
+*{box-sizing:border-box;}
+body{margin:0;font-family:-apple-system,system-ui,sans-serif;background:var(--bg);color:var(--txt);padding:16px;line-height:1.5;max-width:640px;margin:0 auto;}
+h1{font-size:18px;font-weight:500;margin:0 0 12px;}
+button{font:inherit;font-size:15px;background:var(--surf);color:var(--txt);border:0.5px solid var(--bd);border-radius:8px;padding:10px 14px;cursor:pointer;}
+button:active{transform:scale(.97);}
+button.on{background:var(--accbg);border-color:var(--acc);color:var(--acc);}
+input[type=range]{flex:1;min-width:140px;}
+.row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;}
+svg{width:100%;display:block;background:var(--surf);border:0.5px solid var(--bd);border-radius:12px;}
+.mut{color:var(--txt2);font-size:13px;}
+.stamp{font-size:16px;font-weight:500;margin-bottom:4px;}
+.drop{border:1.5px dashed var(--bd);border-radius:12px;padding:20px;text-align:center;color:var(--txt2);margin-bottom:14px;}
+</style>
+</head>
+<body>
+<h1>Ship track viewer</h1>
+<div class="drop" id="drop">Tap to choose a GPX file, or drag one here
+  <div><input type="file" id="file" accept=".gpx,.xml" style="margin-top:8px;"></div>
+</div>
+<div id="app" style="display:none;">
+  <div class="row">
+    <button id="prev">‹ Prev</button>
+    <input id="slider" type="range" min="0" max="0" value="0" step="1">
+    <button id="next">Next ›</button>
+    <button id="play">▶ Play</button>
+    <button id="trail" class="on">Trail</button>
+  </div>
+  <div class="stamp" id="stamp">—</div>
+  <div class="mut" id="meta" style="margin-bottom:12px;">—</div>
+  <svg id="map" viewBox="0 0 600 440"></svg>
+</div>
+<script>
+const W=600,H=440,PAD=40,svg=document.getElementById('map');
+const dark=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;
+const GRID=dark?'#555':'#ccc',FAINT=dark?'#888':'#999',LINE=dark?'#5f7fa0':'#9db8d6';
+const DOT=dark?'#85b7eb':'#185fa5',TRAIL=dark?'#85b7eb':'#185fa5';
+let pts=[],idx=0,trail=true,timer=null,proj=null;
+function ns(t,a){const e=document.createElementNS('http://www.w3.org/2000/svg',t);for(k in a)e.setAttribute(k,a[k]);return e;}
+function parseGPX(txt){const doc=new DOMParser().parseFromString(txt,'application/xml');
+  const nodes=doc.getElementsByTagName('trkpt'),out=[];
+  for(let i=0;i<nodes.length;i++){const n=nodes[i],lat=parseFloat(n.getAttribute('lat')),lon=parseFloat(n.getAttribute('lon'));
+    if(isNaN(lat)||isNaN(lon))continue;const tn=n.getElementsByTagName('time')[0];
+    out.push({lat:lat,lon:lon,time:tn?tn.textContent.trim():''});}
+  return out;}
+function makeProj(){let mnla=90,mxla=-90,mnlo=180,mxlo=-180;
+  pts.forEach(p=>{mnla=Math.min(mnla,p.lat);mxla=Math.max(mxla,p.lat);mnlo=Math.min(mnlo,p.lon);mxlo=Math.max(mxlo,p.lon);});
+  const midla=(mnla+mxla)/2,k=Math.cos(midla*Math.PI/180);
+  const gw=(mxlo-mnlo)*k||1e-6,gh=(mxla-mnla)||1e-6;
+  const sc=Math.min((W-2*PAD)/gw,(H-2*PAD)/gh);
+  const ox=(W-gw*sc)/2,oy=(H-gh*sc)/2;
+  return p=>[ox+((p.lon-mnlo)*k)*sc, oy+((mxla-p.lat))*sc];}
+function fmt(t){if(!t)return '(no time)';const d=new Date(t);return isNaN(d)?t:d.toISOString().replace('T',' ').replace(/\..*/,'')+'Z';}
+function draw(){svg.innerHTML='';if(!pts.length)return;
+  let path='';pts.forEach((p,i)=>{const[x,y]=proj(p);path+=(i?'L':'M')+x.toFixed(1)+' '+y.toFixed(1);});
+  svg.appendChild(ns('path',{d:path,fill:'none',stroke:LINE,'stroke-width':'2','stroke-linejoin':'round','stroke-linecap':'round'}));
+  const[sx,sy]=proj(pts[0]);svg.appendChild(ns('circle',{cx:sx,cy:sy,r:4,fill:'none',stroke:FAINT,'stroke-width':'1.5'}));
+  if(trail){for(let i=Math.max(0,idx-20);i<idx;i++){const[x,y]=proj(pts[i]);
+    svg.appendChild(ns('circle',{cx:x,cy:y,r:5,fill:TRAIL,stroke:'none',opacity:(0.05+0.25*(i-(idx-20))/20).toFixed(3)}));}}
+  const[x,y]=proj(pts[idx]);
+  svg.appendChild(ns('circle',{cx:x,cy:y,r:8,fill:DOT,stroke:dark?'#1a1a18':'#fff','stroke-width':'2'}));
+  document.getElementById('stamp').textContent=fmt(pts[idx].time);
+  document.getElementById('meta').textContent='point '+(idx+1)+' of '+pts.length+' · lat '+pts[idx].lat.toFixed(5)+', lon '+pts[idx].lon.toFixed(5);
+  const sl=document.getElementById('slider');sl.max=pts.length-1;sl.value=idx;}
+function load(txt){pts=parseGPX(txt);idx=0;if(!pts.length){alert('No track points found. Is this a GPX file with <trkpt> entries?');return;}
+  proj=makeProj();document.getElementById('drop').style.display='none';document.getElementById('app').style.display='block';draw();}
+document.getElementById('file').onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>load(rd.result);rd.readAsText(f);};
+const drop=document.getElementById('drop');
+drop.ondragover=e=>{e.preventDefault();};
+drop.ondrop=e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f){const rd=new FileReader();rd.onload=()=>load(rd.result);rd.readAsText(f);}};
+document.getElementById('slider').oninput=e=>{idx=+e.target.value;draw();};
+document.getElementById('prev').onclick=()=>{idx=Math.max(0,idx-1);draw();};
+document.getElementById('next').onclick=()=>{idx=Math.min(pts.length-1,idx+1);draw();};
+document.getElementById('trail').onclick=e=>{trail=!trail;e.target.className=trail?'on':'';draw();};
+document.getElementById('play').onclick=e=>{if(timer){clearInterval(timer);timer=null;e.target.textContent='▶ Play';e.target.className='';}
+  else{e.target.textContent='⏸ Pause';e.target.className='on';timer=setInterval(()=>{if(idx>=pts.length-1){clearInterval(timer);timer=null;document.getElementById('play').textContent='▶ Play';document.getElementById('play').className='';return;}idx++;draw();},200);}};
+document.addEventListener('keydown',e=>{if(e.key==='ArrowLeft'){idx=Math.max(0,idx-1);draw();}if(e.key==='ArrowRight'){idx=Math.min(pts.length-1,idx+1);draw();}});
+</script>
+</body>
+</html>
