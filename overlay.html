@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orca + Track Overlay</title>
+<style>
+:root{--bg:#faf9f5;--surf:#fff;--txt:#1a1a18;--txt2:#5f5e5a;--bd:#e0ded6;--acc:#185fa5;--accbg:#e6f1fb;--warn:#a32d2d;}
+@media(prefers-color-scheme:dark){:root{--bg:#1a1a18;--surf:#2c2c2a;--txt:#f2f0e9;--txt2:#b4b2a9;--bd:#444441;--acc:#85b7eb;--accbg:#0c447c;--warn:#f09595;}}
+*{box-sizing:border-box;}
+body{margin:0;font-family:-apple-system,system-ui,sans-serif;background:var(--bg);color:var(--txt);padding:16px;line-height:1.5;max-width:640px;margin:0 auto;}
+h1{font-size:18px;font-weight:500;margin:0 0 12px;}
+button{font:inherit;font-size:15px;background:var(--surf);color:var(--txt);border:0.5px solid var(--bd);border-radius:8px;padding:10px 14px;cursor:pointer;}
+button:active{transform:scale(.97);}
+button.on{background:var(--accbg);border-color:var(--acc);color:var(--acc);}
+input[type=range]{flex:1;min-width:140px;}
+.row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;}
+svg{width:100%;display:block;background:var(--surf);border:0.5px solid var(--bd);border-radius:12px;}
+.mut{color:var(--txt2);font-size:13px;}
+.warn{color:var(--warn);}
+.stamp{font-size:16px;font-weight:500;margin-bottom:4px;}
+.load{border:1.5px dashed var(--bd);border-radius:12px;padding:16px;margin-bottom:10px;}
+.load div{margin-top:6px;}
+.ok{color:var(--acc);}
+</style>
+</head>
+<body>
+<h1>Orca + ship track overlay</h1>
+<div class="load">
+  1. Ship track (GPX): <input type="file" id="gpx" accept=".gpx,.xml">
+  <div id="gpxst" class="mut">not loaded</div>
+</div>
+<div class="load">
+  2. Orca scans (CSV): <input type="file" id="csv" accept=".csv">
+  <div id="csvst" class="mut">not loaded</div>
+</div>
+<div id="app" style="display:none;">
+  <div class="row">
+    <button id="prev">‹ Prev</button>
+    <input id="slider" type="range" min="0" max="0" value="0" step="1">
+    <button id="next">Next ›</button>
+    <button id="play">▶ Play</button>
+    <button id="trail" class="on">Trail</button>
+  </div>
+  <div class="stamp" id="stamp">—</div>
+  <div class="mut" id="meta" style="margin-bottom:4px;">—</div>
+  <div id="flag" class="warn" style="font-size:13px;min-height:18px;margin-bottom:10px;"></div>
+  <svg id="map" viewBox="0 0 600 460"></svg>
+</div>
+<script>
+const W=600,H=460,PAD=44,svg=document.getElementById('map');
+const dark=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;
+const GRID=dark?'#555':'#ccc',FAINT=dark?'#888':'#999',LINE=dark?'#5f7fa0':'#9db8d6';
+const DOT=dark?'#85b7eb':'#185fa5',BOAT=dark?'#f2f0e9':'#1a1a18',DTXT=dark?'#1a1a18':'#fff';
+const D2R=Math.PI/180,R2D=180/Math.PI,MPD=111320;
+let track=[],scans=[],idx=0,trail=true,timer=null,proj=null,ready=false;
+function ns(t,a){const e=document.createElementNS('http://www.w3.org/2000/svg',t);for(k in a)e.setAttribute(k,a[k]);return e;}
+function mpl(lat){return MPD*Math.cos(lat*D2R);}
+function brg(a,b){const dN=(b.lat-a.lat)*MPD,dE=(b.lon-a.lon)*mpl((a.lat+b.lat)/2);let x=Math.atan2(dE,dN)*R2D;return x<0?x+360:x;}
+function segd(a,b){const dN=(b.lat-a.lat)*MPD,dE=(b.lon-a.lon)*mpl((a.lat+b.lat)/2);return Math.hypot(dN,dE);}
+function dest(lat,lon,bd,dist){const b=bd*D2R;return{lat:lat+dist*Math.cos(b)/MPD,lon:lon+dist*Math.sin(b)/mpl(lat)};}
