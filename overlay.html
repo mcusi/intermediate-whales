@@ -80,9 +80,13 @@ function cogAt(i0){let lo=Math.max(0,i0),hi=Math.min(track.length-1,i0+1),g=0;
 function build(){scans.forEach(s=>{const b=boatAt(s.ms),c=cogAt(b.i);s.boat=b.pos;s.inRange=b.inRange;s.cog=c.cog;s.stationary=c.stationary;
   s.gpts=s.groups.map(g=>{const abs=(c.cog+g.bearing)%360,p=dest(b.pos.lat,b.pos.lon,abs,g.dist);return Object.assign({},g,{lat:p.lat,lon:p.lon});});});
   let mnla=90,mxla=-90,mnlo=180,mxlo=-180;const ext=(la,lo)=>{mnla=Math.min(mnla,la);mxla=Math.max(mxla,la);mnlo=Math.min(mnlo,lo);mxlo=Math.max(mxlo,lo);};
-  track.forEach(p=>ext(p.lat,p.lon));scans.forEach(s=>{if(s.inRange)s.gpts.forEach(g=>ext(g.lat,g.lon));});
-  const midla=(mnla+mxla)/2,k=Math.cos(midla*D2R),gw=(mxlo-mnlo)*k||1e-6,gh=(mxla-mnla)||1e-6,sc=Math.min((W-2*PAD)/gw,(H-2*PAD)/gh),ox=(W-gw*sc)/2,oy=(H-gh*sc)/2;
-  proj=(la,lo)=>[ox+((lo-mnlo)*k)*sc,oy+((mxla-la))*sc];}
+    scans.forEach(s=>{if(s.inRange){ext(s.boat.lat,s.boat.lon);s.gpts.forEach(g=>ext(g.lat,g.lon));}});
+    if(mnla>mxla){track.forEach(p=>ext(p.lat,p.lon));}
+    const midla=(mnla+mxla)/2,k=Math.cos(midla*D2R);
+    let gw=(mxlo-mnlo)*k,gh=(mxla-mnla);const span=Math.max(gw,gh,1e-6)*(1+2*zoomPad);
+    const cx=(mnlo+mxlo)/2,cy=(mnla+mxla)/2;
+    const sc=Math.min(W-2*PAD,H-2*PAD)/span,ox=W/2,oy=H/2;
+    proj=(la,lo)=>[ox+((lo-cx)*k)*sc,oy-((la-cy))*sc];
 function fmt(ms){return new Date(ms).toISOString().replace('T',' ').replace(/\..*/,'')+'Z';}
 function dot(x,y,g,op){svg.appendChild(ns('circle',{cx:x,cy:y,r:11,fill:DOT,stroke:dark?'#1a1a18':'#fff','stroke-width':'2',opacity:op}));
   const t=ns('text',{x:x,y:y+4,'font-size':'11',fill:DTXT,'text-anchor':'middle','font-weight':'700'});t.textContent=g.unknown?'?':g.size;svg.appendChild(t);
