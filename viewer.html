@@ -12,6 +12,7 @@ body{margin:0;font-family:-apple-system,system-ui,sans-serif;background:var(--bg
 h1{font-size:18px;font-weight:500;margin:0 0 12px;}
 button{font:inherit;font-size:15px;background:var(--surf);color:var(--txt);border:0.5px solid var(--bd);border-radius:8px;padding:10px 14px;cursor:pointer;}
 button:active{transform:scale(.97);}
+button.on{background:var(--accbg);border-color:var(--acc);color:var(--acc);}
 input[type=range]{flex:1;min-width:140px;}
 .row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;}
 svg{width:100%;max-width:520px;display:block;margin:0 auto;background:var(--surf);border:0.5px solid var(--bd);border-radius:12px;}
@@ -30,6 +31,7 @@ svg{width:100%;max-width:520px;display:block;margin:0 auto;background:var(--surf
     <button id="prev">‹ Prev</button>
     <input id="slider" type="range" min="0" max="0" value="0" step="1">
     <button id="next">Next ›</button>
+    <button id="trail">Trail</button>
   </div>
   <div class="stamp" id="stamp">—</div>
   <div class="mut" id="meta" style="margin-bottom:12px;">—</div>
@@ -39,12 +41,13 @@ svg{width:100%;max-width:520px;display:block;margin:0 auto;background:var(--surf
 const S=360,C=180,R=150,svg=document.getElementById('plot');
 const dark=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;
 const GRID=dark?'#555':'#ccc',NUM=dark?'#b4b2a9':'#5f5e5a',FAINT=dark?'#888':'#999',RING=dark?'#2c2c2a':'#fff';
-const COLORS=['#185fa5','#d85a30','#1d9e75','#d4537e','#ba7517','#7f77dd','#639922','#e24b4a','#0f6e56','#993556'];
+const DOT=dark?'#85b7eb':'#185fa5',DTXT=dark?'#1a1a18':'#fff';
 const LABELS=['100','300','500','1km',''];
-let scans=[],idx=0;
+let scans=[],idx=0,trail=false;
 function ns(t,a){const e=document.createElementNS('http://www.w3.org/2000/svg',t);for(k in a)e.setAttribute(k,a[k]);return e;}
 function rp(d){if(d>=1000)return R*(4/5)+R*(1/5)*Math.min((d-1000)/1000,1);
   const seg=[0,100,300,500,1000];for(let i=1;i<5;i++){if(d<=seg[i])return R*((i-1)/5)+R*(1/5)*((d-seg[i-1])/(seg[i]-seg[i-1]));}return R;}
+function xy(g){const a=(g.clock*30-90)*Math.PI/180,rr=rp(g.dist);return[C+rr*Math.cos(a),C+rr*Math.sin(a)];}
 function parseCSV(txt){const lines=txt.replace(/\r/g,'').split('\n').filter(l=>l.trim());
   const parse=l=>{const o=[];let c='',q=false;for(let i=0;i<l.length;i++){const ch=l[i];
     if(q){if(ch==='"'){if(l[i+1]==='"'){c+='"';i++;}else q=false;}else c+=ch;}
@@ -67,12 +70,15 @@ function draw(){svg.innerHTML='';
     svg.appendChild(ns('line',{x1:C,y1:C,x2:C+R*Math.cos(a),y2:C+R*Math.sin(a),stroke:GRID,'stroke-width':'1'}));
     const t=ns('text',{x:C+(R+11)*Math.cos(a),y:C+(R+11)*Math.sin(a)+4,'font-size':'12',fill:NUM,'text-anchor':'middle'});t.textContent=h;svg.appendChild(t);}
   const b=ns('text',{x:C,y:15,'font-size':'10',fill:FAINT,'text-anchor':'middle'});b.textContent='bow';svg.appendChild(b);
-  if(!scans.length)return;const s=scans[idx];
-  s.groups.forEach((g,i)=>{const a=(g.clock*30-90)*Math.PI/180,rr=rp(g.dist),x=C+rr*Math.cos(a),y=C+rr*Math.sin(a),col=COLORS[i%COLORS.length];
-    svg.appendChild(ns('circle',{cx:x,cy:y,r:12,fill:col,stroke:RING,'stroke-width':'2'}));
-    const t=ns('text',{x:x,y:y+4,'font-size':'12',fill:'#fff','text-anchor':'middle','font-weight':'700'});t.textContent=g.unknown?'?':g.size;svg.appendChild(t);
-    if(g.drone){svg.appendChild(ns('circle',{cx:x+11,cy:y-11,r:5,fill:'#fff',stroke:col,'stroke-width':'1.5'}));
-      const dt=ns('text',{x:x+11,y:y-8,'font-size':'8',fill:col,'text-anchor':'middle','font-weight':'700'});dt.textContent='D';svg.appendChild(dt);}});
+  if(!scans.length)return;
+  if(trail&&idx>0){scans[idx-1].groups.forEach(g=>{const[x,y]=xy(g);
+    svg.appendChild(ns('circle',{cx:x,cy:y,r:12,fill:DOT,stroke:'none',opacity:'0.18'}));});}
+  const s=scans[idx];
+  s.groups.forEach(g=>{const[x,y]=xy(g);
+    svg.appendChild(ns('circle',{cx:x,cy:y,r:12,fill:DOT,stroke:RING,'stroke-width':'2'}));
+    const t=ns('text',{x:x,y:y+4,'font-size':'12',fill:DTXT,'text-anchor':'middle','font-weight':'700'});t.textContent=g.unknown?'?':g.size;svg.appendChild(t);
+    if(g.drone){svg.appendChild(ns('circle',{cx:x+11,cy:y-11,r:5,fill:'#fff',stroke:DOT,'stroke-width':'1.5'}));
+      const dt=ns('text',{x:x+11,y:y-8,'font-size':'8',fill:DOT,'text-anchor':'middle','font-weight':'700'});dt.textContent='D';svg.appendChild(dt);}});
   document.getElementById('stamp').textContent=s.ts+(s.tsd?'  ('+s.tsd+')':'');
   const tot=s.groups.reduce((a,g)=>a+(g.unknown||g.size==null?0:g.size),0),unk=s.groups.filter(g=>g.unknown).length,dr=s.groups.filter(g=>g.drone).length;
   document.getElementById('meta').textContent=s.groups.length+' groups · '+tot+' whales counted'+(unk?' · '+unk+' unknown':'')+(dr?' · '+dr+' on drone':'')+'   (timepoint '+(idx+1)+' of '+scans.length+')';
@@ -86,6 +92,7 @@ drop.ondrop=e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f){const r
 document.getElementById('slider').oninput=e=>{idx=+e.target.value;draw();};
 document.getElementById('prev').onclick=()=>{idx=Math.max(0,idx-1);draw();};
 document.getElementById('next').onclick=()=>{idx=Math.min(scans.length-1,idx+1);draw();};
+document.getElementById('trail').onclick=e=>{trail=!trail;e.target.className=trail?'on':'';draw();};
 document.addEventListener('keydown',e=>{if(e.key==='ArrowLeft'){idx=Math.max(0,idx-1);draw();}if(e.key==='ArrowRight'){idx=Math.min(scans.length-1,idx+1);draw();}});
 </script>
 </body>
