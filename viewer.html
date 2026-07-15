@@ -74,9 +74,9 @@ function draw(){svg.innerHTML='';
   if(trail&&idx>0){scans[idx-1].groups.forEach(g=>{const[x,y]=xy(g);
     svg.appendChild(ns('circle',{cx:x,cy:y,r:12,fill:DOT,stroke:'none',opacity:'0.18'}));});}
   const s=scans[idx];
-  s.groups.forEach(g=>{const[x,y]=xy(g);
-    svg.appendChild(ns('circle',{cx:x,cy:y,r:12,fill:DOT,stroke:RING,'stroke-width':'2'}));
-    const t=ns('text',{x:x,y:y+4,'font-size':'12',fill:DTXT,'text-anchor':'middle','font-weight':'700'});t.textContent=g.unknown?'?':g.size;svg.appendChild(t);
+    s.groups.forEach(g=>{const[x,y]=xy(g);
+      svg.appendChild(ns('circle',{cx:x,cy:y,r:12,fill:DOT,stroke:RING,'stroke-width':'2',opacity:'0.8'}));
+      const t=ns('text',{x:x,y:y+4,'font-size':'12',fill:DTXT,'text-anchor':'middle','font-weight':'700'});t.textContent=g.unknown?'?':g.size;svg.appendChild(t);
     if(g.drone){svg.appendChild(ns('circle',{cx:x+11,cy:y-11,r:5,fill:'#fff',stroke:DOT,'stroke-width':'1.5'}));
       const dt=ns('text',{x:x+11,y:y-8,'font-size':'8',fill:DOT,'text-anchor':'middle','font-weight':'700'});dt.textContent='D';svg.appendChild(dt);}});
   document.getElementById('stamp').textContent=s.ts+(s.tsd?'  ('+s.tsd+')':'');
