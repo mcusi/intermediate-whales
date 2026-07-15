@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>Orca Logger</title>
+<link rel="manifest" href="manifest.json">
+<style>
+:root{--bg:#faf9f5;--surf:#fff;--txt:#1a1a18;--txt2:#5f5e5a;--txt3:#8a8980;--bd:#e0ded6;--acc:#185fa5;--accbg:#e6f1fb;}
+@media(prefers-color-scheme:dark){:root{--bg:#1a1a18;--surf:#2c2c2a;--txt:#f2f0e9;--txt2:#b4b2a9;--txt3:#888780;--bd:#444441;--acc:#85b7eb;--accbg:#0c447c;}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+body{margin:0;font-family:-apple-system,system-ui,sans-serif;background:var(--bg);color:var(--txt);padding:16px;line-height:1.5;}
+h1{font-size:18px;font-weight:500;margin:0 0 12px;}
+button{font:inherit;font-size:14px;background:var(--surf);color:var(--txt);border:0.5px solid var(--bd);border-radius:8px;padding:8px 12px;cursor:pointer;}
+button:active{transform:scale(.97);}
+button.primary{border-color:var(--acc);color:var(--acc);}
+input{font:inherit;font-size:14px;background:var(--surf);color:var(--txt);border:0.5px solid var(--bd);border-radius:8px;padding:6px 8px;}
+textarea{width:100%;min-height:110px;font-family:ui-monospace,monospace;font-size:12px;background:var(--surf);color:var(--txt);border:0.5px solid var(--bd);border-radius:8px;padding:8px;}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+.wrap{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;}
+.col{flex:1;min-width:280px;}
+svg{width:100%;max-width:360px;touch-action:none;background:var(--surf);border:0.5px solid var(--bd);border-radius:12px;}
+.grp{display:flex;align-items:center;gap:8px;font-size:14px;padding:5px 0;border-bottom:0.5px solid var(--bd);}
+.mut{color:var(--txt2);font-size:13px;}
+label{font-size:13px;color:var(--txt2);}
+</style>
+</head>
+<body>
+<h1>Orca group logger</h1>
+<div class="wrap">
+  <div class="col"><svg id="plot" viewBox="0 0 360 360"></svg></div>
+  <div class="col">
+    <div class="row" style="margin-bottom:10px;">
+      <label>Outer ring</label><input id="maxd" type="number" value="1000" step="100" style="width:80px;"><span class="mut">m</span>
+    </div>
+    <div class="row" style="margin-bottom:10px;">
+      <label>Boat heading</label><input id="hdg" type="number" placeholder="—" style="width:70px;"><span class="mut">° (optional)</span>
+    </div>
+    <div id="sel" class="mut" style="margin-bottom:8px;">Tap the plot to add a group.</div>
+    <div id="groups" style="margin-bottom:12px;"></div>
+    <div class="row" style="margin-bottom:12px;">
+      <button class="primary" id="save">Save scan</button>
+      <button id="undo">Undo</button>
+      <button id="clear">Clear</button>
+    </div>
+    <div class="mut" id="count">0 scans saved</div>
+  </div>
+</div>
+<div style="margin-top:16px;border-top:0.5px solid var(--bd);padding-top:12px;">
+  <div class="row" style="margin-bottom:8px;">
+    <span class="mut">Export:</span>
+    <button id="csv">Show CSV</button><button id="json">Show JSON</button>
+    <button id="copy">Copy</button><button id="share">Share / save file</button>
+    <button id="wipe" style="color:#a32d2d;">Erase all</button>
+    <span id="msg" style="font-size:12px;color:var(--acc);"></span>
+  </div>
+  <textarea id="out" readonly placeholder="Tap Show CSV or Show JSON, then Copy or Share."></textarea>
+</div>
+<script>
+const S=360,C=180,R=150,svg=document.getElementById('plot');
+let cur=[],log=JSON.parse(localStorage.getItem('orcaLog')||'[]'),mode='csv';
+const maxd=()=>Math.max(50,+document.getElementById('maxd').value||1000);
+function ns(t,a){const e=document.createElementNS('http://www.w3.org/2000/svg',t);for(k in a)e.setAttribute(k,a[k]);return e;}
+function grid(){svg.innerHTML='';const md=maxd();
+  for(let i=1;i<=5;i++){const rr=R*i/5;svg.appendChild(ns('circle',{cx:C,cy:C,r:rr,fill:'none',stroke:'var(--bd)','stroke-width':'0.5'}));
+    const t=ns('text',{x:C+2,y:C-rr+11,'font-size':'9',fill:'var(--txt3)'});t.textContent=Math.round(md*i/5)+'m';svg.appendChild(t);}
+  for(let h=1;h<=12;h++){const a=(h*30-90)*Math.PI/180,x=C+R*Math.cos(a),y=C+R*Math.sin(a);
+    svg.appendChild(ns('line',{x1:C,y1:C,x2:x,y2:y,stroke:'var(--bd)','stroke-width':'0.5'}));
+    const lx=C+(R+11)*Math.cos(a),ly=C+(R+11)*Math.sin(a);
+    const t=ns('text',{x:lx,y:ly+3,'font-size':'10',fill:'var(--txt2)','text-anchor':'middle'});t.textContent=h;svg.appendChild(t);}
+  const b=ns('text',{x:C,y:14,'font-size':'9',fill:'var(--txt3)','text-anchor':'middle'});b.textContent='bow';svg.appendChild(b);
+  cur.forEach(g=>{svg.appendChild(ns('circle',{cx:g.px,cy:g.py,r:9,fill:'var(--accbg)',stroke:'var(--acc)','stroke-width':'1'}));
+    const t=ns('text',{x:g.px,y:g.py+3.5,'font-size':'10',fill:'var(--acc)','text-anchor':'middle','font-weight':'500'});t.textContent=g.size;svg.appendChild(t);});}
+function conv(px,py){const dx=px-C,dy=py-C,rp=Math.hypot(dx,dy);let deg=Math.atan2(dx,-dy)*180/Math.PI;if(deg<0)deg+=360;
+  let ch=Math.round(deg/30);if(ch===0)ch=12;return{dist:Math.round(Math.min(rp/R,1)*maxd()),bearing:Math.round(deg),clock:ch};}
+function pt(ev){const r=svg.getBoundingClientRect(),e=ev.touches?ev.touches[0]:ev;return{px:(e.clientX-r.left)/r.width*S,py:(e.clientY-r.top)/r.height*S};}
+function add(ev){ev.preventDefault();const p=pt(ev);if(Math.hypot(p.px-C,p.py-C)>R)return;cur.push({px:p.px,py:p.py,size:1,...conv(p.px,p.py)});grid();list();}
+svg.addEventListener('click',add);svg.addEventListener('touchstart',add,{passive:false});
+function list(){const d=document.getElementById('groups');d.innerHTML='';
+  document.getElementById('sel').textContent=cur.length?cur.length+' group(s) this scan':'Tap the plot to add a group.';
+  cur.forEach((g,i)=>{const row=document.createElement('div');row.className='grp';
+    row.innerHTML='<span style="flex:1;color:var(--txt2);">'+g.dist+'m · '+g.clock+" o'clock</span>";
+    const mk=(t,f)=>{const b=document.createElement('button');b.textContent=t;b.style.padding='2px 10px';b.onclick=f;return b;};
+    const n=document.createElement('span');n.textContent=g.size;n.style.cssText='min-width:20px;text-align:center;font-weight:500;';
+    row.append(mk('−',()=>{g.size=Math.max(1,g.size-1);grid();list();}),n,mk('+',()=>{g.size++;grid();list();}),mk('✕',()=>{cur.splice(i,1);grid();list();}));
+    d.appendChild(row);});}
+function upd(){document.getElementById('count').textContent=log.length+' scans saved';}
+document.getElementById('save').onclick=()=>{if(!cur.length)return;
+  const hd=document.getElementById('hdg').value;
+  log.push({ts:new Date().toISOString(),max_dist_m:maxd(),boat_heading_deg:hd===''?null:+hd,
+    groups:cur.map(g=>({dist_m:g.dist,clock:g.clock,bearing_deg:g.bearing,size:g.size}))});
+  localStorage.setItem('orcaLog',JSON.stringify(log));cur=[];grid();list();upd();};
+document.getElementById('undo').onclick=()=>{cur.pop();grid();list();};
+document.getElementById('clear').onclick=()=>{cur=[];grid();list();};
+document.getElementById('maxd').onchange=grid;
+function toCSV(){let r=['scan_ts,boat_heading_deg,group_n,distance_m,clock_hour,rel_bearing_deg,group_size'];
+  log.forEach(s=>s.groups.forEach((g,i)=>r.push([s.ts,s.boat_heading_deg??'',i+1,g.dist_m,g.clock,g.bearing_deg,g.size].join(','))));return r.join('\n');}
+function flash(t){const m=document.getElementById('msg');m.textContent=t;setTimeout(()=>m.textContent='',2500);}
+document.getElementById('csv').onclick=()=>{mode='csv';document.getElementById('out').value=toCSV()||'(no scans saved yet)';};
+document.getElementById('json').onclick=()=>{mode='json';document.getElementById('out').value=JSON.stringify(log,null,2);};
+document.getElementById('copy').onclick=async()=>{const ta=document.getElementById('out');if(!ta.value)return flash('Show CSV or JSON first');
+  try{await navigator.clipboard.writeText(ta.value);flash('Copied ✓');}catch(e){ta.focus();ta.select();document.execCommand('copy');flash('Copied ✓');}};
+document.getElementById('share').onclick=async()=>{const txt=mode==='json'?JSON.stringify(log,null,2):toCSV();if(!txt)return flash('Nothing to share yet');
+  const name='orca_scans.'+mode,type=mode==='json'?'application/json':'text/csv';
+  try{const f=new File([txt],name,{type});if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],title:name});return;}}catch(e){}
+  try{const u=URL.createObjectURL(new Blob([txt],{type}));const a=document.createElement('a');a.href=u;a.download=name;a.click();URL.revokeObjectURL(u);}catch(e){flash('Use Copy instead');}};
+document.getElementById('wipe').onclick=()=>{if(confirm('Erase all saved scans? Export first!')){log=[];localStorage.removeItem('orcaLog');upd();document.getElementById('out').value='';}};
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js');
+grid();list();upd();
+</script>
+</body>
+</html>
