@@ -73,10 +73,13 @@ function grid(){svg.innerHTML='';const md=maxd();
     const t=ns('text',{x:g.px,y:g.py+4,'font-size':'12',fill:'#fff','text-anchor':'middle','font-weight':'700'});t.textContent=g.size;svg.appendChild(t);});}
 function conv(px,py){const dx=px-C,dy=py-C,rp=Math.hypot(dx,dy);let deg=Math.atan2(dx,-dy)*180/Math.PI;if(deg<0)deg+=360;
   let ch=Math.round(deg/30);if(ch===0)ch=12;return{dist:Math.round(Math.min(rp/R,1)*maxd()),bearing:Math.round(deg),clock:ch};}
-function pt(ev){const r=svg.getBoundingClientRect(),e=ev.touches?ev.touches[0]:ev;return{px:(e.clientX-r.left)/r.width*S,py:(e.clientY-r.top)/r.height*S};}
-function add(ev){ev.preventDefault();const p=pt(ev);if(Math.hypot(p.px-C,p.py-C)>R)return;
-  cur.push({px:p.px,py:p.py,size:1,color:COLORS[cur.length%COLORS.length],...conv(p.px,p.py)});grid();list();}
-svg.addEventListener('touchend',add,{passive:false});svg.addEventListener('click',add);
+let downXY=null;
+svg.addEventListener('pointerdown',e=>{downXY=[e.clientX,e.clientY];});
+svg.addEventListener('pointerup',e=>{if(!downXY)return;
+  const moved=Math.hypot(e.clientX-downXY[0],e.clientY-downXY[1]);downXY=null;if(moved>10)return;
+  const r=svg.getBoundingClientRect(),px=(e.clientX-r.left)/r.width*S,py=(e.clientY-r.top)/r.height*S;
+  if(Math.hypot(px-C,py-C)>R)return;
+  cur.push({px:px,py:py,size:1,color:COLORS[cur.length%COLORS.length],...conv(px,py)});grid();list();});
 function list(){const d=document.getElementById('groups');d.innerHTML='';
   document.getElementById('sel').textContent=cur.length?cur.length+' group(s) this scan':'Tap the plot to add a group.';
   cur.forEach((g,i)=>{const row=document.createElement('div');row.className='grp';
