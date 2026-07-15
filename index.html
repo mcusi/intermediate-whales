@@ -26,7 +26,7 @@ input{font:inherit;font-size:15px;background:var(--surf);color:var(--txt);border
 textarea{width:100%;min-height:110px;font-family:ui-monospace,monospace;font-size:12px;background:var(--surf);color:var(--txt);border:0.5px solid var(--bd);border-radius:8px;padding:8px;}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
 svg{width:100%;max-width:520px;display:block;margin:0 auto;touch-action:none;background:var(--surf);border:0.5px solid var(--bd);border-radius:12px;}
-.grp{display:flex;align-items:center;gap:10px;font-size:15px;padding:7px 0;border-bottom:0.5px solid var(--bd);flex-wrap:wrap;}
+.grp{display:flex;align-items:center;gap:8px;font-size:15px;padding:7px 0;border-bottom:0.5px solid var(--bd);flex-wrap:wrap;}
 .dot{width:16px;height:16px;border-radius:50%;flex:none;border:1px solid rgba(0,0,0,.25);}
 .mut{color:var(--txt2);font-size:14px;}
 label{font-size:14px;color:var(--txt2);}
@@ -83,7 +83,7 @@ function grid(){svg.innerHTML='';
     const t=ns('text',{x:lx,y:ly+4,'font-size':'12',fill:NUM,'text-anchor':'middle'});t.textContent=h;svg.appendChild(t);}
   const b=ns('text',{x:C,y:15,'font-size':'10',fill:FAINT,'text-anchor':'middle'});b.textContent='bow';svg.appendChild(b);
   cur.forEach(g=>{svg.appendChild(ns('circle',{cx:g.px,cy:g.py,r:12,fill:g.color,stroke:RING,'stroke-width':'2'}));
-    const t=ns('text',{x:g.px,y:g.py+4,'font-size':'12',fill:'#fff','text-anchor':'middle','font-weight':'700'});t.textContent=g.size;svg.appendChild(t);
+    const t=ns('text',{x:g.px,y:g.py+4,'font-size':'12',fill:'#fff','text-anchor':'middle','font-weight':'700'});t.textContent=g.unknown?'?':g.size;svg.appendChild(t);
     if(g.drone){svg.appendChild(ns('circle',{cx:g.px+11,cy:g.py-11,r:5,fill:'#fff',stroke:g.color,'stroke-width':'1.5'}));
       const dt=ns('text',{x:g.px+11,y:g.py-8,'font-size':'8',fill:g.color,'text-anchor':'middle','font-weight':'700'});dt.textContent='D';svg.appendChild(dt);}});}
 function conv(px,py){const dx=px-C,dy=py-C,rp=Math.hypot(dx,dy);let deg=Math.atan2(dx,-dy)*180/Math.PI;if(deg<0)deg+=360;
@@ -94,7 +94,7 @@ function conv(px,py){const dx=px-C,dy=py-C,rp=Math.hypot(dx,dy);let deg=Math.ata
 let downXY=null;
 function place(cx,cy){const r=svg.getBoundingClientRect(),px=(cx-r.left)/r.width*S,py=(cy-r.top)/r.height*S;
   if(Math.hypot(px-C,py-C)>R)return;
-  cur.push({px:px,py:py,size:1,drone:false,color:COLORS[cur.length%COLORS.length],...conv(px,py)});grid();list();}
+  cur.push({px:px,py:py,size:1,drone:false,unknown:false,color:COLORS[cur.length%COLORS.length],...conv(px,py)});grid();list();}
 svg.addEventListener('touchstart',e=>{const t=e.changedTouches[0];downXY=[t.clientX,t.clientY];},{passive:true});
 svg.addEventListener('touchend',e=>{e.preventDefault();if(!downXY)return;const t=e.changedTouches[0];
   const moved=Math.hypot(t.clientX-downXY[0],t.clientY-downXY[1]);downXY=null;if(moved>12)return;place(t.clientX,t.clientY);},{passive:false});
@@ -103,18 +103,20 @@ function list(){const d=document.getElementById('groups');d.innerHTML='';
   document.getElementById('sel').textContent=cur.length?cur.length+' group(s) this scan':'Tap the plot to add a group.';
   cur.forEach((g,i)=>{const row=document.createElement('div');row.className='grp';
     const sw=document.createElement('span');sw.className='dot';sw.style.background=g.color;
-    const lab=document.createElement('span');lab.style.cssText='flex:1;color:var(--txt2);min-width:110px;';lab.textContent=g.dist+'m · '+g.clock+" o'clock";
+    const lab=document.createElement('span');lab.style.cssText='flex:1;color:var(--txt2);min-width:100px;';lab.textContent=g.dist+'m · '+g.clock+" o'clock";
     const mk=(t,f)=>{const b=document.createElement('button');b.textContent=t;b.style.padding='4px 12px';b.onclick=f;return b;};
-    const n=document.createElement('span');n.textContent=g.size;n.style.cssText='min-width:22px;text-align:center;font-weight:500;';
-    const dr=document.createElement('button');dr.textContent='drone';dr.className=g.drone?'on':'';dr.style.padding='4px 12px';dr.onclick=()=>{g.drone=!g.drone;grid();list();};
-    row.append(sw,lab,mk('−',()=>{g.size=Math.max(1,g.size-1);grid();list();}),n,mk('+',()=>{g.size++;grid();list();}),dr,mk('✕',()=>{cur.splice(i,1);recolor();grid();list();}));
+    const n=document.createElement('span');n.textContent=g.unknown?'—':g.size;n.style.cssText='min-width:22px;text-align:center;font-weight:500;';
+    const dr=document.createElement('button');dr.textContent='drone';dr.className=g.drone?'on':'';dr.style.padding='4px 10px';dr.onclick=()=>{g.drone=!g.drone;grid();list();};
+    const uk=document.createElement('button');uk.textContent='unknown size';uk.className=g.unknown?'on':'';uk.style.padding='4px 10px';uk.onclick=()=>{g.unknown=!g.unknown;grid();list();};
+    if(g.unknown){row.append(sw,lab,uk,dr,mk('✕',()=>{cur.splice(i,1);recolor();grid();list();}));}
+    else{row.append(sw,lab,mk('−',()=>{g.size=Math.max(1,g.size-1);grid();list();}),n,mk('+',()=>{g.size++;grid();list();}),uk,dr,mk('✕',()=>{cur.splice(i,1);recolor();grid();list();}));}
     d.appendChild(row);});}
 function recolor(){cur.forEach((g,i)=>g.color=COLORS[i%COLORS.length]);}
 function upd(){document.getElementById('count').textContent=log.length+' scans saved';}
 document.getElementById('save').onclick=()=>{if(!cur.length)return;
-  const hd=document.getElementById('hdg').value;
-  log.push({ts:new Date().toISOString(),boat_heading_deg:hd===''?null:+hd,
-    groups:cur.map(g=>({dist_m:g.dist,clock:g.clock,bearing_deg:g.bearing,size:g.size,drone:g.drone}))});
+  const hd=document.getElementById('hdg').value,now=new Date();
+  log.push({ts_utc:now.toISOString(),ts_device:now.toString(),boat_heading_deg:hd===''?null:+hd,
+    groups:cur.map(g=>({dist_m:g.dist,clock:g.clock,bearing_deg:g.bearing,size:g.unknown?null:g.size,unknown_size:g.unknown,drone:g.drone}))});
   localStorage.setItem('orcaLog',JSON.stringify(log));cur=[];grid();list();upd();};
 document.getElementById('undo').onclick=()=>{cur.pop();grid();list();};
 document.getElementById('clear').onclick=()=>{cur=[];grid();list();};
@@ -123,8 +125,9 @@ document.getElementById('menubtn').onclick=()=>{menu.style.display=menu.style.di
 document.addEventListener('click',e=>{if(!e.target.closest('#menu')&&e.target.id!=='menubtn')menu.style.display='none';});
 document.getElementById('erase').onclick=()=>{if(confirm('Erase ALL saved scans? Make sure you have exported first. This cannot be undone.')){
   if(confirm('Are you sure? This permanently deletes everything.')){log=[];localStorage.removeItem('orcaLog');upd();document.getElementById('out').value='';menu.style.display='none';}}};
-function toCSV(){let r=['scan_ts,boat_heading_deg,group_n,distance_m,clock_hour,rel_bearing_deg,group_size,drone'];
-  log.forEach(s=>s.groups.forEach((g,i)=>r.push([s.ts,s.boat_heading_deg??'',i+1,g.dist_m,g.clock,g.bearing_deg,g.size,g.drone?'yes':'no'].join(','))));return r.join('\n');}
+function csvcell(v){const s=String(v);return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
+function toCSV(){let r=['scan_ts_utc,scan_ts_device,boat_heading_deg,group_n,distance_m,clock_hour,rel_bearing_deg,group_size,unknown_size,drone'];
+  log.forEach(s=>s.groups.forEach((g,i)=>r.push([s.ts_utc,csvcell(s.ts_device),s.boat_heading_deg??'',i+1,g.dist_m,g.clock,g.bearing_deg,g.unknown_size?'NA':g.size,g.unknown_size?'True':'False',g.drone?'True':'False'].join(','))));return r.join('\n');}
 function flash(t){const m=document.getElementById('msg');m.textContent=t;setTimeout(()=>m.textContent='',2500);}
 document.getElementById('csv').onclick=()=>{mode='csv';document.getElementById('out').value=toCSV()||'(no scans saved yet)';};
 document.getElementById('json').onclick=()=>{mode='json';document.getElementById('out').value=JSON.stringify(log,null,2);};
