@@ -41,6 +41,8 @@ svg{width:100%;display:block;background:var(--surf);border:0.5px solid var(--bd)
     <button id="next">Next ›</button>
     <button id="play">▶ Play</button>
     <button id="trail" class="on">Trail</button>
+    <button id="zoomin" aria-label="Zoom in">＋</button>
+    <button id="zoomout" aria-label="Zoom out">－</button>
   </div>
   <div class="stamp" id="stamp">—</div>
   <div class="mut" id="meta" style="margin-bottom:4px;">—</div>
@@ -53,7 +55,7 @@ const dark=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').
 const GRID=dark?'#555':'#ccc',FAINT=dark?'#888':'#999',LINE=dark?'#5f7fa0':'#9db8d6';
 const DOT=dark?'#85b7eb':'#185fa5',BOAT=dark?'#f2f0e9':'#1a1a18',DTXT=dark?'#1a1a18':'#fff';
 const D2R=Math.PI/180,R2D=180/Math.PI,MPD=111320;
-let track=[],scans=[],idx=0,trail=true,timer=null,proj=null,ready=false;
+let track=[],scans=[],idx=0,trail=true,timer=null,proj=null,ready=false;zoomPad=0.4;
 function ns(t,a){const e=document.createElementNS('http://www.w3.org/2000/svg',t);for(k in a)e.setAttribute(k,a[k]);return e;}
 function mpl(lat){return MPD*Math.cos(lat*D2R);}
 function brg(a,b){const dN=(b.lat-a.lat)*MPD,dE=(b.lon-a.lon)*mpl((a.lat+b.lat)/2);let x=Math.atan2(dE,dN)*R2D;return x<0?x+360:x;}
