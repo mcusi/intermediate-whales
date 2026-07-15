@@ -8,19 +8,25 @@
 <title>Orca Logger</title>
 <link rel="manifest" href="manifest.json">
 <style>
-:root{--bg:#faf9f5;--surf:#fff;--txt:#1a1a18;--txt2:#5f5e5a;--bd:#e0ded6;--acc:#185fa5;}
-@media(prefers-color-scheme:dark){:root{--bg:#1a1a18;--surf:#2c2c2a;--txt:#f2f0e9;--txt2:#b4b2a9;--bd:#444441;--acc:#85b7eb;}}
+:root{--bg:#faf9f5;--surf:#fff;--txt:#1a1a18;--txt2:#5f5e5a;--bd:#e0ded6;--acc:#185fa5;--accbg:#e6f1fb;}
+@media(prefers-color-scheme:dark){:root{--bg:#1a1a18;--surf:#2c2c2a;--txt:#f2f0e9;--txt2:#b4b2a9;--bd:#444441;--acc:#85b7eb;--accbg:#0c447c;}}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
 body{margin:0;font-family:-apple-system,system-ui,sans-serif;background:var(--bg);color:var(--txt);padding:16px;line-height:1.5;max-width:560px;margin:0 auto;}
-h1{font-size:18px;font-weight:500;margin:0 0 12px;}
+.top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;position:relative;}
+h1{font-size:18px;font-weight:500;margin:0;}
 button{font:inherit;font-size:15px;background:var(--surf);color:var(--txt);border:0.5px solid var(--bd);border-radius:8px;padding:10px 14px;cursor:pointer;}
 button:active{transform:scale(.97);}
 button.primary{border-color:var(--acc);color:var(--acc);}
+button.on{background:var(--accbg);border-color:var(--acc);color:var(--acc);}
+.menubtn{padding:8px 12px;font-size:20px;line-height:1;}
+.menu{position:absolute;right:0;top:44px;background:var(--surf);border:0.5px solid var(--bd);border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.15);padding:6px;z-index:10;min-width:160px;}
+.menu button{display:block;width:100%;text-align:left;border:none;background:none;padding:12px;border-radius:6px;}
+.menu button:active{background:var(--bd);}
 input{font:inherit;font-size:15px;background:var(--surf);color:var(--txt);border:0.5px solid var(--bd);border-radius:8px;padding:8px 10px;}
 textarea{width:100%;min-height:110px;font-family:ui-monospace,monospace;font-size:12px;background:var(--surf);color:var(--txt);border:0.5px solid var(--bd);border-radius:8px;padding:8px;}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
 svg{width:100%;max-width:520px;display:block;margin:0 auto;touch-action:none;background:var(--surf);border:0.5px solid var(--bd);border-radius:12px;}
-.grp{display:flex;align-items:center;gap:10px;font-size:15px;padding:7px 0;border-bottom:0.5px solid var(--bd);}
+.grp{display:flex;align-items:center;gap:10px;font-size:15px;padding:7px 0;border-bottom:0.5px solid var(--bd);flex-wrap:wrap;}
 .dot{width:16px;height:16px;border-radius:50%;flex:none;border:1px solid rgba(0,0,0,.25);}
 .mut{color:var(--txt2);font-size:14px;}
 label{font-size:14px;color:var(--txt2);}
@@ -28,12 +34,17 @@ label{font-size:14px;color:var(--txt2);}
 </style>
 </head>
 <body>
-<h1>Orca group logger</h1>
+<div class="top">
+  <h1>Orca group logger</h1>
+  <button class="menubtn" id="menubtn" aria-label="Menu">⋯</button>
+  <div class="menu" id="menu" style="display:none;">
+    <button id="erase" style="color:#a32d2d;">Erase all data</button>
+  </div>
+</div>
 <svg id="plot" viewBox="0 0 360 360"></svg>
 <div class="controls">
   <div class="row" style="margin-bottom:10px;">
-    <label>Outer ring</label><input id="maxd" type="number" value="1000" step="100" style="width:80px;"><span class="mut">m</span>
-    <label style="margin-left:8px;">Boat heading</label><input id="hdg" type="number" placeholder="—" style="width:70px;"><span class="mut">° (optional)</span>
+    <label>Boat heading</label><input id="hdg" type="number" placeholder="—" style="width:70px;"><span class="mut">° (optional)</span>
   </div>
   <div id="sel" class="mut" style="margin-bottom:8px;">Tap the plot to add a group.</div>
   <div id="groups" style="margin-bottom:12px;"></div>
@@ -58,49 +69,62 @@ const S=360,C=180,R=150,svg=document.getElementById('plot');
 const dark=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;
 const GRID=dark?'#555':'#ccc',NUM=dark?'#b4b2a9':'#5f5e5a',FAINT=dark?'#888':'#999',RING=dark?'#2c2c2a':'#fff';
 const COLORS=['#185fa5','#d85a30','#1d9e75','#d4537e','#ba7517','#7f77dd','#639922','#e24b4a','#0f6e56','#993556'];
+const LABELS=['100','300','500','1km',''],RINGDIST=[100,300,500,1000,1000];
 let cur=[],log=JSON.parse(localStorage.getItem('orcaLog')||'[]'),mode='csv';
-const maxd=()=>Math.max(50,+document.getElementById('maxd').value||1000);
 function ns(t,a){const e=document.createElementNS('http://www.w3.org/2000/svg',t);for(k in a)e.setAttribute(k,a[k]);return e;}
-function grid(){svg.innerHTML='';const md=maxd();
-  for(let i=1;i<=5;i++){const rr=R*i/5;svg.appendChild(ns('circle',{cx:C,cy:C,r:rr,fill:'none',stroke:GRID,'stroke-width':'1'}));
-    const t=ns('text',{x:C+3,y:C-rr+12,'font-size':'10',fill:FAINT});t.textContent=Math.round(md*i/5)+'m';svg.appendChild(t);}
+function grid(){svg.innerHTML='';
+  for(let i=1;i<=5;i++){const rr=R*i/5,outer=i===5;
+    const c=ns('circle',{cx:C,cy:C,r:rr,fill:'none',stroke:GRID,'stroke-width':'1'});
+    if(outer)c.setAttribute('stroke-dasharray','4 4');svg.appendChild(c);
+    if(LABELS[i-1]){const t=ns('text',{x:C+3,y:C-rr+13,'font-size':'11',fill:FAINT});t.textContent=LABELS[i-1];svg.appendChild(t);}}
   for(let h=1;h<=12;h++){const a=(h*30-90)*Math.PI/180,x=C+R*Math.cos(a),y=C+R*Math.sin(a);
     svg.appendChild(ns('line',{x1:C,y1:C,x2:x,y2:y,stroke:GRID,'stroke-width':'1'}));
     const lx=C+(R+11)*Math.cos(a),ly=C+(R+11)*Math.sin(a);
     const t=ns('text',{x:lx,y:ly+4,'font-size':'12',fill:NUM,'text-anchor':'middle'});t.textContent=h;svg.appendChild(t);}
   const b=ns('text',{x:C,y:15,'font-size':'10',fill:FAINT,'text-anchor':'middle'});b.textContent='bow';svg.appendChild(b);
   cur.forEach(g=>{svg.appendChild(ns('circle',{cx:g.px,cy:g.py,r:12,fill:g.color,stroke:RING,'stroke-width':'2'}));
-    const t=ns('text',{x:g.px,y:g.py+4,'font-size':'12',fill:'#fff','text-anchor':'middle','font-weight':'700'});t.textContent=g.size;svg.appendChild(t);});}
+    const t=ns('text',{x:g.px,y:g.py+4,'font-size':'12',fill:'#fff','text-anchor':'middle','font-weight':'700'});t.textContent=g.size;svg.appendChild(t);
+    if(g.drone){svg.appendChild(ns('circle',{cx:g.px+11,cy:g.py-11,r:5,fill:'#fff',stroke:g.color,'stroke-width':'1.5'}));
+      const dt=ns('text',{x:g.px+11,y:g.py-8,'font-size':'8',fill:g.color,'text-anchor':'middle','font-weight':'700'});dt.textContent='D';svg.appendChild(dt);}});}
 function conv(px,py){const dx=px-C,dy=py-C,rp=Math.hypot(dx,dy);let deg=Math.atan2(dx,-dy)*180/Math.PI;if(deg<0)deg+=360;
-  let ch=Math.round(deg/30);if(ch===0)ch=12;return{dist:Math.round(Math.min(rp/R,1)*maxd()),bearing:Math.round(deg),clock:ch};}
+  let ch=Math.round(deg/30);if(ch===0)ch=12;
+  const frac=Math.min(rp/R,1)*5,seg=Math.min(Math.floor(frac),4),lo=seg===0?0:RINGDIST[seg-1],hi=RINGDIST[seg];
+  let dist=Math.round(lo+(hi-lo)*(frac-seg));if(rp/R>=1)dist=Math.round(1000+(rp/R-1)*1000);
+  return{dist:dist,bearing:Math.round(deg),clock:ch};}
 let downXY=null;
-svg.addEventListener('pointerdown',e=>{downXY=[e.clientX,e.clientY];});
-svg.addEventListener('pointerup',e=>{if(!downXY)return;
-  const moved=Math.hypot(e.clientX-downXY[0],e.clientY-downXY[1]);downXY=null;if(moved>10)return;
-  const r=svg.getBoundingClientRect(),px=(e.clientX-r.left)/r.width*S,py=(e.clientY-r.top)/r.height*S;
+function place(cx,cy){const r=svg.getBoundingClientRect(),px=(cx-r.left)/r.width*S,py=(cy-r.top)/r.height*S;
   if(Math.hypot(px-C,py-C)>R)return;
-  cur.push({px:px,py:py,size:1,color:COLORS[cur.length%COLORS.length],...conv(px,py)});grid();list();});
+  cur.push({px:px,py:py,size:1,drone:false,color:COLORS[cur.length%COLORS.length],...conv(px,py)});grid();list();}
+svg.addEventListener('touchstart',e=>{const t=e.changedTouches[0];downXY=[t.clientX,t.clientY];},{passive:true});
+svg.addEventListener('touchend',e=>{e.preventDefault();if(!downXY)return;const t=e.changedTouches[0];
+  const moved=Math.hypot(t.clientX-downXY[0],t.clientY-downXY[1]);downXY=null;if(moved>12)return;place(t.clientX,t.clientY);},{passive:false});
+svg.addEventListener('click',e=>{place(e.clientX,e.clientY);});
 function list(){const d=document.getElementById('groups');d.innerHTML='';
   document.getElementById('sel').textContent=cur.length?cur.length+' group(s) this scan':'Tap the plot to add a group.';
   cur.forEach((g,i)=>{const row=document.createElement('div');row.className='grp';
     const sw=document.createElement('span');sw.className='dot';sw.style.background=g.color;
-    const lab=document.createElement('span');lab.style.cssText='flex:1;color:var(--txt2);';lab.textContent=g.dist+'m · '+g.clock+" o'clock";
+    const lab=document.createElement('span');lab.style.cssText='flex:1;color:var(--txt2);min-width:110px;';lab.textContent=g.dist+'m · '+g.clock+" o'clock";
     const mk=(t,f)=>{const b=document.createElement('button');b.textContent=t;b.style.padding='4px 12px';b.onclick=f;return b;};
     const n=document.createElement('span');n.textContent=g.size;n.style.cssText='min-width:22px;text-align:center;font-weight:500;';
-    row.append(sw,lab,mk('−',()=>{g.size=Math.max(1,g.size-1);grid();list();}),n,mk('+',()=>{g.size++;grid();list();}),mk('✕',()=>{cur.splice(i,1);recolor();grid();list();}));
+    const dr=document.createElement('button');dr.textContent='drone';dr.className=g.drone?'on':'';dr.style.padding='4px 12px';dr.onclick=()=>{g.drone=!g.drone;grid();list();};
+    row.append(sw,lab,mk('−',()=>{g.size=Math.max(1,g.size-1);grid();list();}),n,mk('+',()=>{g.size++;grid();list();}),dr,mk('✕',()=>{cur.splice(i,1);recolor();grid();list();}));
     d.appendChild(row);});}
 function recolor(){cur.forEach((g,i)=>g.color=COLORS[i%COLORS.length]);}
 function upd(){document.getElementById('count').textContent=log.length+' scans saved';}
 document.getElementById('save').onclick=()=>{if(!cur.length)return;
   const hd=document.getElementById('hdg').value;
-  log.push({ts:new Date().toISOString(),max_dist_m:maxd(),boat_heading_deg:hd===''?null:+hd,
-    groups:cur.map(g=>({dist_m:g.dist,clock:g.clock,bearing_deg:g.bearing,size:g.size}))});
+  log.push({ts:new Date().toISOString(),boat_heading_deg:hd===''?null:+hd,
+    groups:cur.map(g=>({dist_m:g.dist,clock:g.clock,bearing_deg:g.bearing,size:g.size,drone:g.drone}))});
   localStorage.setItem('orcaLog',JSON.stringify(log));cur=[];grid();list();upd();};
 document.getElementById('undo').onclick=()=>{cur.pop();grid();list();};
 document.getElementById('clear').onclick=()=>{cur=[];grid();list();};
-document.getElementById('maxd').onchange=grid;
-function toCSV(){let r=['scan_ts,boat_heading_deg,group_n,distance_m,clock_hour,rel_bearing_deg,group_size'];
-  log.forEach(s=>s.groups.forEach((g,i)=>r.push([s.ts,s.boat_heading_deg??'',i+1,g.dist_m,g.clock,g.bearing_deg,g.size].join(','))));return r.join('\n');}
+const menu=document.getElementById('menu');
+document.getElementById('menubtn').onclick=()=>{menu.style.display=menu.style.display==='none'?'block':'none';};
+document.addEventListener('click',e=>{if(!e.target.closest('#menu')&&e.target.id!=='menubtn')menu.style.display='none';});
+document.getElementById('erase').onclick=()=>{if(confirm('Erase ALL saved scans? Make sure you have exported first. This cannot be undone.')){
+  if(confirm('Are you sure? This permanently deletes everything.')){log=[];localStorage.removeItem('orcaLog');upd();document.getElementById('out').value='';menu.style.display='none';}}};
+function toCSV(){let r=['scan_ts,boat_heading_deg,group_n,distance_m,clock_hour,rel_bearing_deg,group_size,drone'];
+  log.forEach(s=>s.groups.forEach((g,i)=>r.push([s.ts,s.boat_heading_deg??'',i+1,g.dist_m,g.clock,g.bearing_deg,g.size,g.drone?'yes':'no'].join(','))));return r.join('\n');}
 function flash(t){const m=document.getElementById('msg');m.textContent=t;setTimeout(()=>m.textContent='',2500);}
 document.getElementById('csv').onclick=()=>{mode='csv';document.getElementById('out').value=toCSV()||'(no scans saved yet)';};
 document.getElementById('json').onclick=()=>{mode='json';document.getElementById('out').value=JSON.stringify(log,null,2);};
