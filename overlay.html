@@ -27,6 +27,10 @@ svg:active{cursor:grabbing;}
 .ok{color:var(--acc);}
 .leg{display:inline-block;width:11px;height:11px;border-radius:50%;vertical-align:-1px;margin-right:4px;}
 .filt{border:0.5px solid var(--bd);border-radius:12px;padding:12px;margin-bottom:12px;}
+.ggrad{display:inline-block;width:70px;height:10px;border-radius:5px;vertical-align:-1px;margin:0 4px;}
+.seg{display:flex;border:0.5px solid var(--bd);border-radius:8px;overflow:hidden;}
+.seg button{border:none;border-radius:0;padding:8px 14px;}
+.seg button+button{border-left:0.5px solid var(--bd);}
 </style>
 </head>
 <body>
@@ -55,6 +59,14 @@ svg:active{cursor:grabbing;}
     </div>
   </div>
   <div class="row">
+    <span class="mut">Step by:</span>
+    <div class="seg">
+      <button id="modeScan" class="on">Scans</button>
+      <button id="modeBoat">Boat track</button>
+    </div>
+    <span id="boatStepCtl" class="mut" style="display:none;">every <input type="number" id="stepSec" value="15" min="1" step="1"> s</span>
+  </div>
+  <div class="row">
     <button id="prev">‹ Prev</button>
     <input id="slider" type="range" min="0" max="0" value="0" step="1">
     <button id="next">Next ›</button>
@@ -64,7 +76,12 @@ svg:active{cursor:grabbing;}
     <button id="zoomout" aria-label="Zoom out">－</button>
     <button id="reset">Reset view</button>
   </div>
-  <div class="mut" style="margin-bottom:8px;"><span class="leg" style="background:var(--txt);"></span>boat &nbsp; <span class="leg" style="background:var(--acc);"></span>orca groups &nbsp; <span class="leg" style="background:var(--drone);"></span>drone</div>
+  <div class="mut" style="margin-bottom:8px;">
+    <span class="leg" style="background:var(--txt);"></span>boat &nbsp; <span class="leg" style="background:var(--acc);"></span>orca groups &nbsp; <span class="leg" style="background:var(--drone);"></span>drone
+  </div>
+  <div class="mut" style="margin-bottom:8px;">
+    boat time <span class="ggrad" id="boatGradLeg"></span> &nbsp; drone time <span class="ggrad" id="droneGradLeg"></span> <span style="margin-left:6px;">(early → late)</span>
+  </div>
   <div class="stamp" id="stamp">—</div>
   <div class="mut" id="meta" style="margin-bottom:4px;">—</div>
   <div id="flag" class="warn" style="font-size:13px;min-height:18px;margin-bottom:10px;"></div>
@@ -73,25 +90,28 @@ svg:active{cursor:grabbing;}
 <script>
 const W=600,H=460,PAD=44,svg=document.getElementById('map');
 const dark=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;
-const GRID=dark?'#555':'#ccc',FAINT=dark?'#888':'#999',LINE=dark?'#5f7fa0':'#9db8d6';
+const GRID=dark?'#555':'#ccc',FAINT=dark?'#888':'#999';
 const DOT=dark?'#85b7eb':'#185fa5',BOAT=dark?'#f2f0e9':'#1a1a18',DTXT=dark?'#1a1a18':'#fff';
-const DRONE=dark?'#5dcaa5':'#1d9e75',DRONELINE=dark?'#3a7d68':'#9fe1cb';
+const DRONE=dark?'#5dcaa5':'#1d9e75';
 const D2R=Math.PI/180,R2D=180/Math.PI,MPD=111320,HEADING_GAP_MS=60000;
+// gradient endpoints: boat = blue->magenta, drone = teal->yellow
+const BOAT_G=[[46,110,180],[200,60,140]],DRONE_G=[[26,140,110],[220,190,40]];
 let track=[],scans=[],drone=[],view=[],idx=0,trail=true,timer=null,proj=null,ready=false;
-let zoom=1,panX=0,panY=0,scene=null,fStart=null,fEnd=null;
+let zoom=1,panX=0,panY=0,scene=null,fStart=null,fEnd=null,mode='scan',boatSteps=[];
 function ns(t,a){const e=document.createElementNS('http://www.w3.org/2000/svg',t);for(k in a)e.setAttribute(k,a[k]);return e;}
 function mpl(lat){return MPD*Math.cos(lat*D2R);}
 function dest(lat,lon,bd,dist){const b=bd*D2R;return{lat:lat+dist*Math.cos(b)/MPD,lon:lon+dist*Math.sin(b)/mpl(lat)};}
+function lerpC(c1,c2,f){return 'rgb('+Math.round(c1[0]+(c2[0]-c1[0])*f)+','+Math.round(c1[1]+(c2[1]-c1[1])*f)+','+Math.round(c1[2]+(c2[2]-c1[2])*f)+')';}
 function dm(s){const m=s.match(/^(\d+)-([\d.]+)-([NSEW])$/);if(!m)return NaN;let v=parseInt(m[1],10)+parseFloat(m[2])/60;if(m[3]==='S'||m[3]==='W')v=-v;return v;}
 function parseTrack(txt){const lines=txt.replace(/\r/g,'').split('\n').filter(l=>l.trim());let hi=0;
   while(hi<lines.length&&lines[hi][0]==='#')hi++;
   const H=lines[hi].split(',').map(s=>s.trim()),col=n=>H.indexOf(n);
-  const ci={la:col('Latitude'),lo:col('Longitude'),y:col('Year'),mo:col('Month'),d:col('Day'),h:col('Hour'),mi:col('Minute'),s:col('Second'),hd:col('Heading'),cog:col('Course over ground')};
+  const ci={la:col('Latitude'),lo:col('Longitude'),y:col('Year'),mo:col('Month'),d:col('Day'),h:col('Hour'),mi:col('Minute'),s:col('Second'),hd:col('Heading')};
   const out=[];
   for(let i=hi+1;i<lines.length;i++){const r=lines[i].split(',');if(r.length<8)continue;const lat=dm(r[ci.la].trim()),lon=dm(r[ci.lo].trim());if(isNaN(lat)||isNaN(lon))continue;
     const ms=Date.UTC(+r[ci.y],+r[ci.mo]-1,+r[ci.d],+r[ci.h],+r[ci.mi],+r[ci.s]);
-    const hd=ci.hd>=0&&r[ci.hd]!==undefined&&r[ci.hd].trim()!==''?parseFloat(r[ci.hd]):null;
-    out.push({lat:lat,lon:lon,ms:ms,hd:isNaN(hd)?null:hd});}
+    let hd=ci.hd>=0&&r[ci.hd]!==undefined&&r[ci.hd].trim()!==''?parseFloat(r[ci.hd]):null;if(isNaN(hd))hd=null;
+    out.push({lat:lat,lon:lon,ms:ms,hd:hd});}
   out.sort((a,b)=>a.ms-b.ms);return out;}
 function parseSRT(txt,offH){const out=[];const re=/(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?)[\s\S]*?\[latitude:\s*(-?\d+\.?\d*)\][\s\S]*?\[longitude:\s*(-?\d+\.?\d*)\]/g;let m;
   while((m=re.exec(txt))){const iso=m[1].replace(' ','T')+'Z',base=Date.parse(iso);if(isNaN(base))continue;const ms=base-offH*3600000;
@@ -110,17 +130,22 @@ function posAt(arr,t){if(!arr.length)return null;if(t<=arr[0].ms||t>=arr[arr.len
 function boatAt(t){if(!track.length)return{pos:null,inRange:false};
   if(t<track[0].ms||t>track[track.length-1].ms)return{pos:null,inRange:false};
   let i=0;while(i<track.length-1&&track[i+1].ms<t)i++;const a=track[i],b=track[i+1],f=(t-a.ms)/(b.ms-a.ms||1);
-  return{pos:{lat:a.lat+(b.lat-a.lat)*f,lon:a.lon+(b.lon-a.lon)*f},a:a,b:b,inRange:true};}
+  return{pos:{lat:a.lat+(b.lat-a.lat)*f,lon:a.lon+(b.lon-a.lon)*f},inRange:true};}
 function angLerp(h1,h2,f){let d=((h2-h1+540)%360)-180;return (h1+d*f+360)%360;}
 function headingAt(t){if(!track.length)return null;if(t<track[0].ms||t>track[track.length-1].ms)return null;
   let i=0;while(i<track.length-1&&track[i+1].ms<t)i++;const a=track[i],b=track[i+1];
   if(a.hd==null||b.hd==null)return null;if(Math.abs(t-a.ms)>HEADING_GAP_MS&&Math.abs(t-b.ms)>HEADING_GAP_MS)return null;
   const f=(t-a.ms)/(b.ms-a.ms||1);return angLerp(a.hd,b.hd,f);}
-function build(){scans.forEach(s=>{const b=boatAt(s.ms),hd=headingAt(s.ms);s.boat=b.pos;s.inRange=b.inRange;s.hd=hd;
-  if(b.pos&&hd!=null){s.gpts=s.groups.map(g=>{const abs=(hd+g.bearing)%360,p=dest(b.pos.lat,b.pos.lon,abs,g.dist);return Object.assign({},g,{lat:p.lat,lon:p.lon});});}
-  else{s.gpts=[];}});
-  applyFilter();fit();}
-function applyFilter(){view=scans.filter(s=>(fStart==null||s.ms>=fStart)&&(fEnd==null||s.ms<=fEnd));if(idx>=view.length)idx=0;}
+function tRange(){if(!track.length)return[0,1];return[track[0].ms,track[track.length-1].ms];}
+function dRange(){if(!drone.length)return[0,1];return[drone[0].ms,drone[drone.length-1].ms];}
+function buildScanFrame(s){const b=boatAt(s.ms),hd=headingAt(s.ms);const fr={ms:s.ms,boat:b.pos,hd:hd,gpts:[]};
+  if(b.pos&&hd!=null)fr.gpts=s.groups.map(g=>{const abs=(hd+g.bearing)%360,p=dest(b.pos.lat,b.pos.lon,abs,g.dist);return Object.assign({},g,{lat:p.lat,lon:p.lon});});
+  return fr;}
+function buildBoatSteps(){boatSteps=[];if(!track.length)return;const step=Math.max(1,(+document.getElementById('stepSec').value||15))*1000;
+  const s0=fStart!=null?Math.max(track[0].ms,fStart):track[0].ms,s1=fEnd!=null?Math.min(track[track.length-1].ms,fEnd):track[track.length-1].ms;
+  for(let t=s0;t<=s1;t+=step){const b=boatAt(t),hd=headingAt(t);boatSteps.push({ms:t,boat:b.pos,hd:hd,gpts:[]});}}
+function rebuildView(){if(mode==='scan'){view=scans.filter(s=>(fStart==null||s.ms>=fStart)&&(fEnd==null||s.ms<=fEnd)).map(buildScanFrame);}
+  else{buildBoatSteps();view=boatSteps;}if(idx>=view.length)idx=0;}
 function fit(){let mnla=90,mxla=-90,mnlo=180,mxlo=-180;const ext=(la,lo)=>{mnla=Math.min(mnla,la);mxla=Math.max(mxla,la);mnlo=Math.min(mnlo,lo);mxlo=Math.max(mxlo,lo);};
   view.forEach(s=>{if(s.boat)ext(s.boat.lat,s.boat.lon);s.gpts.forEach(g=>ext(g.lat,g.lon));});
   if(mnla>mxla){track.forEach(p=>ext(p.lat,p.lon));}
@@ -131,14 +156,15 @@ function fit(){let mnla=90,mxla=-90,mnlo=180,mxlo=-180;const ext=(la,lo)=>{mnla=
   proj=(la,lo)=>[ox+((lo-ctrLon)*k)*sc,oy-((la-ctrLat))*sc];}
 function fmt(ms){return new Date(ms).toISOString().replace('T',' ').replace(/\..*/,'')+'Z';}
 function applyT(){if(scene)scene.setAttribute('transform','translate('+panX+' '+panY+') scale('+zoom+')');}
+function gradLine(pts,grad,tr,wpx){for(let i=1;i<pts.length;i++){const[x1,y1]=proj(pts[i-1].lat,pts[i-1].lon),[x2,y2]=proj(pts[i].lat,pts[i].lon);
+  const f=(pts[i].ms-tr[0])/((tr[1]-tr[0])||1),col=lerpC(grad[0],grad[1],Math.max(0,Math.min(1,f)));
+  scene.appendChild(ns('line',{x1:x1,y1:y1,x2:x2,y2:y2,stroke:col,'stroke-width':wpx,'stroke-linecap':'round'}));}}
 function dot(x,y,g,op){const z=zoom;scene.appendChild(ns('circle',{cx:x,cy:y,r:11/z,fill:DOT,stroke:dark?'#1a1a18':'#fff','stroke-width':(2/z),opacity:op}));
   const t=ns('text',{x:x,y:y+4/z,'font-size':(11/z),fill:DTXT,'text-anchor':'middle','font-weight':'700'});t.textContent=g.drone?'D':(g.unknown?'?':g.size);scene.appendChild(t);}
 function draw(){svg.innerHTML='';if(!ready)return;scene=ns('g',{});svg.appendChild(scene);applyT();
-  if(drone.length){let dp='';drone.forEach((p,i)=>{const[x,y]=proj(p.lat,p.lon);dp+=(i?'L':'M')+x.toFixed(1)+' '+y.toFixed(1);});
-    scene.appendChild(ns('path',{d:dp,fill:'none',stroke:DRONELINE,'stroke-width':(1.5/zoom).toFixed(2),'stroke-linejoin':'round'}));}
-  let path='';track.forEach((p,i)=>{const[x,y]=proj(p.lat,p.lon);path+=(i?'L':'M')+x.toFixed(1)+' '+y.toFixed(1);});
-  scene.appendChild(ns('path',{d:path,fill:'none',stroke:LINE,'stroke-width':(2/zoom).toFixed(2),'stroke-linejoin':'round'}));
-  if(!view.length){document.getElementById('stamp').textContent='No scans in range';document.getElementById('meta').textContent='';document.getElementById('flag').textContent='';return;}
+  if(drone.length)gradLine(drone,DRONE_G,dRange(),(1.6/zoom).toFixed(2));
+  if(track.length)gradLine(track,BOAT_G,tRange(),(2.2/zoom).toFixed(2));
+  if(!view.length){document.getElementById('stamp').textContent='Nothing in range';document.getElementById('meta').textContent='';document.getElementById('flag').textContent='';return;}
   const s=view[idx];
   if(trail&&idx>0&&view[idx-1].gpts.length){view[idx-1].gpts.forEach(g=>{const[x,y]=proj(g.lat,g.lon);scene.appendChild(ns('circle',{cx:x,cy:y,r:11/zoom,fill:DOT,stroke:'none',opacity:'0.16'}));});}
   if(s.boat){const[bx,by]=proj(s.boat.lat,s.boat.lon);
@@ -151,15 +177,17 @@ function draw(){svg.innerHTML='';if(!ready)return;scene=ns('g',{});svg.appendChi
   else if(drone.length){dstat=' · drone not airborne';}
   document.getElementById('stamp').textContent=fmt(s.ms);
   const tot=s.gpts.reduce((a,g)=>a+(g.drone||g.size==null?0:g.size),0);
-  document.getElementById('meta').textContent=(s.boat?'boat '+s.boat.lat.toFixed(5)+', '+s.boat.lon.toFixed(5):'boat: no position')+(s.hd!=null?' · heading '+Math.round(s.hd)+'°':'')+(s.gpts.length?' · '+s.gpts.length+' groups · '+tot+' whales':'')+dstat+'   ('+(idx+1)+' of '+view.length+')';
-  document.getElementById('flag').textContent=!s.boat?'⚠ scan time is outside the track — nothing to place':(s.hd==null?'⚠ no heading at this time — groups not shown for this scan':'');
+  document.getElementById('meta').textContent=(s.boat?'boat '+s.boat.lat.toFixed(5)+', '+s.boat.lon.toFixed(5):'boat: no position')+(s.hd!=null?' · heading '+Math.round(s.hd)+'°':'')+(s.gpts.length?' · '+s.gpts.length+' groups · '+tot+' whales':'')+dstat+'   ('+(idx+1)+' of '+view.length+', '+mode+')';
+  document.getElementById('flag').textContent=mode==='scan'?(!s.boat?'⚠ scan time outside track — nothing to place':(s.hd==null?'⚠ no heading at this time — groups not shown':'')):'';
   const sl=document.getElementById('slider');sl.max=Math.max(0,view.length-1);sl.value=idx;}
 function svgpt(clientX,clientY){const r=svg.getBoundingClientRect();return[(clientX-r.left)/r.width*W,(clientY-r.top)/r.height*H];}
 function zoomAt(sx,sy,factor){const nz=Math.min(60,Math.max(1,zoom*factor));const k=nz/zoom;panX=sx-k*(sx-panX);panY=sy-k*(sy-panY);zoom=nz;clampPan();applyT();}
 function clampPan(){if(zoom<=1){panX=0;panY=0;}}
 function resetView(){zoom=1;panX=0;panY=0;draw();}
 function parseLocalDT(v){if(!v)return null;const m=v.match(/(\d+)-(\d+)-(\d+)T(\d+):(\d+)(?::(\d+))?/);if(!m)return null;return Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5],+(m[6]||0));}
-function tryReady(){if(track.length&&scans.length){build();ready=true;idx=0;zoom=1;panX=0;panY=0;document.getElementById('app').style.display='block';draw();}}
+function setGradLegends(){document.getElementById('boatGradLeg').style.background='linear-gradient(90deg,'+lerpC(BOAT_G[0],BOAT_G[0],0)+','+lerpC(BOAT_G[1],BOAT_G[1],0)+')';
+  document.getElementById('droneGradLeg').style.background='linear-gradient(90deg,'+lerpC(DRONE_G[0],DRONE_G[0],0)+','+lerpC(DRONE_G[1],DRONE_G[1],0)+')';}
+function tryReady(){if(track.length&&scans.length){mode='scan';rebuildView();fit();ready=true;idx=0;zoom=1;panX=0;panY=0;setGradLegends();document.getElementById('app').style.display='block';draw();}}
 document.getElementById('trk').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{track=parseTrack(r.result);const wh=track.filter(p=>p.hd!=null).length;
   document.getElementById('trkst').textContent=track.length?track.length+' points loaded ✓ ('+wh+' with heading)':'no points found';document.getElementById('trkst').className=track.length?'ok':'mut';tryReady();};r.readAsText(f);};
 document.getElementById('csv').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{scans=parseCSV(r.result);
@@ -169,8 +197,13 @@ document.getElementById('srt').onchange=e=>{const fs=[...e.target.files];if(!fs.
     if(done===fs.length){drone=downsample(all,1000);
       document.getElementById('srtst').textContent=drone.length?drone.length+' drone points from '+fs.length+' file(s) ✓':'no drone points found';
       document.getElementById('srtst').className=drone.length?'ok':'mut';if(ready)draw();}};r.readAsText(f);});};
-document.getElementById('applyf').onclick=()=>{fStart=parseLocalDT(document.getElementById('startt').value);fEnd=parseLocalDT(document.getElementById('endt').value);applyFilter();fit();idx=0;draw();};
-document.getElementById('clearf').onclick=()=>{fStart=fEnd=null;document.getElementById('startt').value='';document.getElementById('endt').value='';applyFilter();fit();idx=0;draw();};
+function setMode(m){mode=m;document.getElementById('modeScan').className=m==='scan'?'on':'';document.getElementById('modeBoat').className=m==='boat'?'on':'';
+  document.getElementById('boatStepCtl').style.display=m==='boat'?'inline':'none';idx=0;rebuildView();draw();}
+document.getElementById('modeScan').onclick=()=>setMode('scan');
+document.getElementById('modeBoat').onclick=()=>setMode('boat');
+document.getElementById('stepSec').onchange=()=>{if(mode==='boat'){idx=0;rebuildView();draw();}};
+document.getElementById('applyf').onclick=()=>{fStart=parseLocalDT(document.getElementById('startt').value);fEnd=parseLocalDT(document.getElementById('endt').value);idx=0;rebuildView();fit();draw();};
+document.getElementById('clearf').onclick=()=>{fStart=fEnd=null;document.getElementById('startt').value='';document.getElementById('endt').value='';idx=0;rebuildView();fit();draw();};
 document.getElementById('slider').oninput=e=>{idx=+e.target.value;draw();};
 document.getElementById('prev').onclick=()=>{idx=Math.max(0,idx-1);draw();};
 document.getElementById('next').onclick=()=>{idx=Math.min(view.length-1,idx+1);draw();};
@@ -179,7 +212,7 @@ document.getElementById('zoomin').onclick=()=>zoomAt(W/2,H/2,1.4);
 document.getElementById('zoomout').onclick=()=>zoomAt(W/2,H/2,1/1.4);
 document.getElementById('reset').onclick=resetView;
 document.getElementById('play').onclick=e=>{if(timer){clearInterval(timer);timer=null;e.target.textContent='▶ Play';e.target.className='';}
-  else{e.target.textContent='⏸ Pause';e.target.className='on';timer=setInterval(()=>{if(idx>=view.length-1){clearInterval(timer);timer=null;document.getElementById('play').textContent='▶ Play';document.getElementById('play').className='';return;}idx++;draw();},500);}};
+  else{e.target.textContent='⏸ Pause';e.target.className='on';timer=setInterval(()=>{if(idx>=view.length-1){clearInterval(timer);timer=null;document.getElementById('play').textContent='▶ Play';document.getElementById('play').className='';return;}idx++;draw();},mode==='boat'?150:500);}};
 document.addEventListener('keydown',e=>{if(e.key==='ArrowLeft'){idx=Math.max(0,idx-1);draw();}if(e.key==='ArrowRight'){idx=Math.min(view.length-1,idx+1);draw();}});
 svg.addEventListener('wheel',e=>{e.preventDefault();const[sx,sy]=svgpt(e.clientX,e.clientY);zoomAt(sx,sy,e.deltaY<0?1.12:1/1.12);},{passive:false});
 let ptrs=new Map(),lastMid=null,lastDist=null;
