@@ -13,6 +13,7 @@ h1{font-size:18px;font-weight:500;margin:0 0 12px;}
 button{font:inherit;font-size:15px;background:var(--surf);color:var(--txt);border:0.5px solid var(--bd);border-radius:8px;padding:10px 14px;cursor:pointer;}
 button:active{transform:scale(.97);}
 button.on{background:var(--accbg);border-color:var(--acc);color:var(--acc);}
+select{font:inherit;font-size:14px;background:var(--surf);color:var(--txt);border:0.5px solid var(--bd);border-radius:8px;padding:5px 8px;}
 input[type=range]{flex:1;min-width:140px;}
 input[type=number]{font:inherit;font-size:15px;background:var(--surf);color:var(--txt);border:0.5px solid var(--bd);border-radius:8px;padding:6px 8px;width:64px;}
 input[type=datetime-local]{font:inherit;font-size:14px;background:var(--surf);color:var(--txt);border:0.5px solid var(--bd);border-radius:8px;padding:6px 8px;}
@@ -24,6 +25,7 @@ svg:active{cursor:grabbing;}
 .stamp{font-size:16px;font-weight:500;margin-bottom:4px;}
 .load{border:1.5px dashed var(--bd);border-radius:12px;padding:16px;margin-bottom:10px;}
 .load div{margin-top:6px;}
+.tzsel{margin-top:8px;font-size:13px;color:var(--txt2);}
 .ok{color:var(--acc);}
 .leg{display:inline-block;width:11px;height:11px;border-radius:50%;vertical-align:-1px;margin-right:4px;}
 .filt{border:0.5px solid var(--bd);border-radius:12px;padding:12px;margin-bottom:12px;}
@@ -37,20 +39,25 @@ svg:active{cursor:grabbing;}
 <h1>Orca + ship track overlay</h1>
 <div class="load">
   1. Ship track (TimeZero CSV): <input type="file" id="trk" accept=".csv,.txt">
+  <div class="tzsel">timezone of this file: <select id="tzTrk"></select></div>
   <div id="trkst" class="mut">not loaded</div>
 </div>
 <div class="load">
   2. Orca scans (CSV): <input type="file" id="csv" accept=".csv">
+  <div class="tzsel">timezone of this file: <select id="tzCsv"></select></div>
   <div id="csvst" class="mut">not loaded</div>
 </div>
 <div class="load">
   3. Drone track (SRT, optional — select all files): <input type="file" id="srt" accept=".srt" multiple>
+  <div class="tzsel">timezone of this file: <select id="tzSrt"></select></div>
   <div id="srtst" class="mut">not loaded</div>
-  <div style="margin-top:8px;font-size:13px;color:var(--txt2);">Drone time → UTC offset: <input type="number" id="offset" value="7" step="1"> hours (PDT = 7)</div>
 </div>
 <div id="app" style="display:none;">
+  <div class="row">
+    <span class="mut">Display times in:</span> <select id="tzViz"></select>
+  </div>
   <div class="filt">
-    <div class="mut" style="margin-bottom:6px;">Plot range (UTC) — leave blank for all</div>
+    <div class="mut" style="margin-bottom:6px;">Plot range (in display timezone) — leave blank for all</div>
     <div class="row" style="margin-bottom:0;">
       <label class="mut">Start <input type="datetime-local" id="startt" step="1"></label>
       <label class="mut">End <input type="datetime-local" id="endt" step="1"></label>
@@ -90,51 +97,65 @@ svg:active{cursor:grabbing;}
 <script>
 const W=600,H=460,PAD=44,svg=document.getElementById('map');
 const dark=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;
-const GRID=dark?'#555':'#ccc',FAINT=dark?'#888':'#999';
 const DOT=dark?'#85b7eb':'#185fa5',BOAT=dark?'#f2f0e9':'#1a1a18',DTXT=dark?'#1a1a18':'#fff';
 const DRONE=dark?'#5dcaa5':'#1d9e75';
-const D2R=Math.PI/180,R2D=180/Math.PI,MPD=111320,HEADING_GAP_MS=60000;
+const D2R=Math.PI/180,MPD=111320,HEADING_GAP_MS=60000;
 const BOAT_G=[[46,110,180],[200,60,140]],DRONE_G=[[26,140,110],[220,190,40]];
-let track=[],scans=[],drone=[],view=[],idx=0,trail=true,timer=null,proj=null,ready=false;
+// [hours to ADD to local wall-clock to reach UTC, full label, short label]
+const TZOPTS=[[0,'UTC','UTC'],[7,'PDT (UTC−7)','PDT'],[8,'PST (UTC−8)','PST']];
+let trackRaw=[],scansRaw=[],droneRaw=[],track=[],scans=[],drone=[],view=[],idx=0,trail=true,timer=null,proj=null,ready=false;
 let zoom=1,panX=0,panY=0,scene=null,fStart=null,fEnd=null,mode='scan',boatSteps=[];
 function ns(t,a){const e=document.createElementNS('http://www.w3.org/2000/svg',t);for(k in a)e.setAttribute(k,a[k]);return e;}
 function mpl(lat){return MPD*Math.cos(lat*D2R);}
 function dest(lat,lon,bd,dist){const b=bd*D2R;return{lat:lat+dist*Math.cos(b)/MPD,lon:lon+dist*Math.sin(b)/mpl(lat)};}
 function lerpC(c1,c2,f){return 'rgb('+Math.round(c1[0]+(c2[0]-c1[0])*f)+','+Math.round(c1[1]+(c2[1]-c1[1])*f)+','+Math.round(c1[2]+(c2[2]-c1[2])*f)+')';}
 function dm(s){const m=s.match(/^(\d+)-([\d.]+)-([NSEW])$/);if(!m)return NaN;let v=parseInt(m[1],10)+parseFloat(m[2])/60;if(m[3]==='S'||m[3]==='W')v=-v;return v;}
+function off(id){return +document.getElementById(id).value;}
+function vizOff(){return off('tzViz');}
+function vizLabel(){const o=vizOff();const t=TZOPTS.find(x=>x[0]===o);return t?t[2]:'';}
+function fillTZ(id,def){const s=document.getElementById(id);TZOPTS.forEach(([v,lab])=>{const o=document.createElement('option');o.value=v;o.textContent=lab;if(v===def)o.selected=true;s.appendChild(o);});}
+// parse a wall-clock (ignoring any tz marker) into a "naive" ms as if it were UTC
+function naive(y,mo,d,h,mi,s){return Date.UTC(y,mo-1,d,h,mi,s|0);}
 function parseTrack(txt){const lines=txt.replace(/\r/g,'').split('\n').filter(l=>l.trim());let hi=0;
   while(hi<lines.length&&lines[hi][0]==='#')hi++;
   const H=lines[hi].split(',').map(s=>s.trim()),col=n=>H.indexOf(n);
   const ci={la:col('Latitude'),lo:col('Longitude'),y:col('Year'),mo:col('Month'),d:col('Day'),h:col('Hour'),mi:col('Minute'),s:col('Second'),hd:col('Heading')};
   const out=[];
   for(let i=hi+1;i<lines.length;i++){const r=lines[i].split(',');if(r.length<8)continue;const lat=dm(r[ci.la].trim()),lon=dm(r[ci.lo].trim());if(isNaN(lat)||isNaN(lon))continue;
-    const ms=Date.UTC(+r[ci.y],+r[ci.mo]-1,+r[ci.d],+r[ci.h],+r[ci.mi],+r[ci.s]);
+    const nm=naive(+r[ci.y],+r[ci.mo],+r[ci.d],+r[ci.h],+r[ci.mi],+r[ci.s]);
     let hd=ci.hd>=0&&r[ci.hd]!==undefined&&r[ci.hd].trim()!==''?parseFloat(r[ci.hd]):null;if(isNaN(hd))hd=null;
-    out.push({lat:lat,lon:lon,ms:ms,hd:hd});}
-  out.sort((a,b)=>a.ms-b.ms);return out;}
-function parseSRT(txt,offH){const out=[];const re=/(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?)[\s\S]*?\[latitude:\s*(-?\d+\.?\d*)\][\s\S]*?\[longitude:\s*(-?\d+\.?\d*)\]/g;let m;
-  while((m=re.exec(txt))){const iso=m[1].replace(' ','T')+'Z',base=Date.parse(iso);if(isNaN(base))continue;const ms=base-offH*3600000;
-    out.push({lat:parseFloat(m[2]),lon:parseFloat(m[3]),ms:ms});}return out;}
+    out.push({lat:lat,lon:lon,nm:nm,hd:hd});}
+  out.sort((a,b)=>a.nm-b.nm);return out;}
+function parseSRT(txt){const out=[];const re=/(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})(?:\.\d+)?[\s\S]*?\[latitude:\s*(-?\d+\.?\d*)\][\s\S]*?\[longitude:\s*(-?\d+\.?\d*)\]/g;let m;
+  while((m=re.exec(txt))){const nm=naive(+m[1],+m[2],+m[3],+m[4],+m[5],+m[6]);
+    out.push({lat:parseFloat(m[7]),lon:parseFloat(m[8]),nm:nm});}return out;}
 function parseCSV(txt){const lines=txt.replace(/\r/g,'').split('\n').filter(l=>l.trim());
   const pr=l=>{const o=[];let c='',q=false;for(let i=0;i<l.length;i++){const ch=l[i];
     if(q){if(ch==='"'){if(l[i+1]==='"'){c+='"';i++;}else q=false;}else c+=ch;}else{if(ch===','){o.push(c);c='';}else if(ch==='"')q=true;else c+=ch;}}o.push(c);return o;};
   const H=pr(lines[0]),col=n=>H.indexOf(n),ci={ts:col('scan_ts_utc'),dist:col('distance_m'),bear:col('rel_bearing_deg'),sz:col('group_size'),unk:col('unknown_size'),dr:col('drone')},map={};
-  for(let i=1;i<lines.length;i++){const r=pr(lines[i]),ts=r[ci.ts];if(!ts)continue;if(!map[ts])map[ts]={ts:ts,ms:Date.parse(ts),groups:[]};
+  for(let i=1;i<lines.length;i++){const r=pr(lines[i]),ts=r[ci.ts];if(!ts)continue;
+    const dt=ts.match(/(\d+)-(\d+)-(\d+)[T ](\d+):(\d+):(\d+)/);if(!dt)continue;const nm=naive(+dt[1],+dt[2],+dt[3],+dt[4],+dt[5],+dt[6]);
+    if(!map[ts])map[ts]={nm:nm,groups:[]};
     map[ts].groups.push({dist:+r[ci.dist],bearing:+r[ci.bear],unknown:ci.unk>=0&&/true/i.test(r[ci.unk]),size:/na|^$/i.test(r[ci.sz])?null:+r[ci.sz],drone:ci.dr>=0&&/true/i.test(r[ci.dr])});}
-  return Object.values(map).sort((a,b)=>a.ms-b.ms);}
-function downsample(pts,everyMs){if(!pts.length)return pts;pts.sort((a,b)=>a.ms-b.ms);const out=[pts[0]];let last=pts[0].ms;
-  for(const p of pts){if(p.ms-last>=everyMs){out.push(p);last=p.ms;}}return out;}
+  return Object.values(map).sort((a,b)=>a.nm-b.nm);}
+function downsample(pts,everyMs){if(!pts.length)return pts;pts.sort((a,b)=>a.nm-b.nm);const out=[pts[0]];let last=pts[0].nm;
+  for(const p of pts){if(p.nm-last>=everyMs){out.push(p);last=p.nm;}}return out;}
+// apply the per-input timezone offsets to produce real-UTC ms on working arrays
+function applyTZ(){const ot=off('tzTrk')*3600000,oc=off('tzCsv')*3600000,od=off('tzSrt')*3600000;
+  track=trackRaw.map(p=>({lat:p.lat,lon:p.lon,ms:p.nm+ot,hd:p.hd})).sort((a,b)=>a.ms-b.ms);
+  scans=scansRaw.map(s=>({ms:s.nm+oc,groups:s.groups})).sort((a,b)=>a.ms-b.ms);
+  drone=droneRaw.map(p=>({lat:p.lat,lon:p.lon,ms:p.nm+od})).sort((a,b)=>a.ms-b.ms);
+  if(drone.length)document.getElementById('srtst').textContent=drone.length+' drone points ✓ ['+fmt(drone[0].ms)+' → '+fmt(drone[drone.length-1].ms)+']';}
 function posAt(arr,t){if(!arr.length)return null;if(t<=arr[0].ms||t>=arr[arr.length-1].ms)return null;
   let i=0;while(i<arr.length-1&&arr[i+1].ms<t)i++;const a=arr[i],b=arr[i+1],f=(t-a.ms)/(b.ms-a.ms||1);return{lat:a.lat+(b.lat-a.lat)*f,lon:a.lon+(b.lon-a.lon)*f};}
-function boatAt(t){if(!track.length)return{pos:null,inRange:false};
-  if(t<track[0].ms||t>track[track.length-1].ms)return{pos:null,inRange:false};
+function boatAt(t){if(!track.length)return{pos:null};if(t<track[0].ms||t>track[track.length-1].ms)return{pos:null};
   let i=0;while(i<track.length-1&&track[i+1].ms<t)i++;const a=track[i],b=track[i+1],f=(t-a.ms)/(b.ms-a.ms||1);
-  return{pos:{lat:a.lat+(b.lat-a.lat)*f,lon:a.lon+(b.lon-a.lon)*f},inRange:true};}
+  return{pos:{lat:a.lat+(b.lat-a.lat)*f,lon:a.lon+(b.lon-a.lon)*f}};}
 function angLerp(h1,h2,f){let d=((h2-h1+540)%360)-180;return (h1+d*f+360)%360;}
 function headingAt(t){if(!track.length)return null;if(t<track[0].ms||t>track[track.length-1].ms)return null;
   let i=0;while(i<track.length-1&&track[i+1].ms<t)i++;const a=track[i],b=track[i+1];
   if(a.hd==null||b.hd==null)return null;if(Math.abs(t-a.ms)>HEADING_GAP_MS&&Math.abs(t-b.ms)>HEADING_GAP_MS)return null;
-  const f=(t-a.ms)/(b.ms-a.ms||1);return angLerp(a.hd,b.hd,f);}
+  return angLerp(a.hd,b.hd,(t-a.ms)/(b.ms-a.ms||1));}
 function tRange(){if(!track.length)return[0,1];return[track[0].ms,track[track.length-1].ms];}
 function dRange(){if(!drone.length)return[0,1];return[drone[0].ms,drone[drone.length-1].ms];}
 function buildScanFrame(s){const b=boatAt(s.ms),hd=headingAt(s.ms);const fr={ms:s.ms,boat:b.pos,hd:hd,gpts:[]};
@@ -142,9 +163,9 @@ function buildScanFrame(s){const b=boatAt(s.ms),hd=headingAt(s.ms);const fr={ms:
   return fr;}
 function buildBoatSteps(){boatSteps=[];if(!track.length)return;const stepMs=Math.max(1,(+document.getElementById('stepSec').value||15))*1000;
   const s0=fStart!=null?Math.max(track[0].ms,fStart):track[0].ms,s1=fEnd!=null?Math.min(track[track.length-1].ms,fEnd):track[track.length-1].ms;
-  const inRange=scans.filter(s=>s.ms>=s0-stepMs&&s.ms<=s1+stepMs);
+  const inR=scans.filter(s=>s.ms>=s0-stepMs&&s.ms<=s1+stepMs);
   for(let t=s0;t<=s1;t+=stepMs){const b=boatAt(t),hd=headingAt(t);const fr={ms:t,boat:b.pos,hd:hd,gpts:[]};
-    let best=null,bd=stepMs/2;for(const s of inRange){const d=Math.abs(s.ms-t);if(d<=bd){bd=d;best=s;}}
+    let best=null,bd=stepMs/2;for(const s of inR){const d=Math.abs(s.ms-t);if(d<=bd){bd=d;best=s;}}
     if(best&&b.pos&&hd!=null)fr.gpts=best.groups.map(g=>{const abs=(hd+g.bearing)%360,p=dest(b.pos.lat,b.pos.lon,abs,g.dist);return Object.assign({},g,{lat:p.lat,lon:p.lon});});
     boatSteps.push(fr);}}
 function rebuildView(){if(mode==='scan'){view=scans.filter(s=>(fStart==null||s.ms>=fStart)&&(fEnd==null||s.ms<=fEnd)).map(buildScanFrame);}
@@ -157,7 +178,8 @@ function fit(){let mnla=90,mxla=-90,mnlo=180,mxlo=-180;const ext=(la,lo)=>{mnla=
   const ctrLon=(mnlo+mxlo)/2,ctrLat=(mnla+mxla)/2;
   const sc=Math.min(W-2*PAD,H-2*PAD)/span,ox=W/2,oy=H/2;
   proj=(la,lo)=>[ox+((lo-ctrLon)*k)*sc,oy-((la-ctrLat))*sc];}
-function fmt(ms){return new Date(ms).toISOString().replace('T',' ').replace(/\..*/,'')+'Z';}
+function fmt(ms){const local=ms-vizOff()*3600000;const d=new Date(local);
+  return d.toISOString().replace('T',' ').replace(/\..*/,'')+' '+vizLabel();}
 function applyT(){if(scene)scene.setAttribute('transform','translate('+panX+' '+panY+') scale('+zoom+')');}
 function gradLine(pts,grad,tr,wpx){for(let i=1;i<pts.length;i++){const[x1,y1]=proj(pts[i-1].lat,pts[i-1].lon),[x2,y2]=proj(pts[i].lat,pts[i].lon);
   const f=(pts[i].ms-tr[0])/((tr[1]-tr[0])||1),col=lerpC(grad[0],grad[1],Math.max(0,Math.min(1,f)));
@@ -183,29 +205,35 @@ function draw(){svg.innerHTML='';if(!ready)return;scene=ns('g',{});svg.appendChi
   document.getElementById('meta').textContent=(s.boat?'boat '+s.boat.lat.toFixed(5)+', '+s.boat.lon.toFixed(5):'boat: no position')+(s.hd!=null?' · heading '+Math.round(s.hd)+'°':'')+(s.gpts.length?' · '+s.gpts.length+' groups · '+tot+' whales':'')+dstat+'   ('+(idx+1)+' of '+view.length+', '+mode+')';
   document.getElementById('flag').textContent=mode==='scan'?(!s.boat?'⚠ scan time outside track — nothing to place':(s.hd==null?'⚠ no heading at this time — groups not shown':'')):'';
   const sl=document.getElementById('slider');sl.max=Math.max(0,view.length-1);sl.value=idx;}
-function svgpt(clientX,clientY){const r=svg.getBoundingClientRect();return[(clientX-r.left)/r.width*W,(clientY-r.top)/r.height*H];}
+function svgpt(cx,cy){const r=svg.getBoundingClientRect();return[(cx-r.left)/r.width*W,(cy-r.top)/r.height*H];}
 function zoomAt(sx,sy,factor){const nz=Math.min(60,Math.max(1,zoom*factor));const k=nz/zoom;panX=sx-k*(sx-panX);panY=sy-k*(sy-panY);zoom=nz;clampPan();applyT();}
 function clampPan(){if(zoom<=1){panX=0;panY=0;}}
 function resetView(){zoom=1;panX=0;panY=0;draw();}
-function parseLocalDT(v){if(!v)return null;const m=v.match(/(\d+)-(\d+)-(\d+)T(\d+):(\d+)(?::(\d+))?/);if(!m)return null;return Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5],+(m[6]||0));}
+function parseFilterDT(v){if(!v)return null;const m=v.match(/(\d+)-(\d+)-(\d+)T(\d+):(\d+)(?::(\d+))?/);if(!m)return null;return naive(+m[1],+m[2],+m[3],+m[4],+m[5],+(m[6]||0))+vizOff()*3600000;}
 function setGradLegends(){document.getElementById('boatGradLeg').style.background='linear-gradient(90deg,'+lerpC(BOAT_G[0],BOAT_G[0],0)+','+lerpC(BOAT_G[1],BOAT_G[1],0)+')';
   document.getElementById('droneGradLeg').style.background='linear-gradient(90deg,'+lerpC(DRONE_G[0],DRONE_G[0],0)+','+lerpC(DRONE_G[1],DRONE_G[1],0)+')';}
-function tryReady(){if(track.length&&scans.length){mode='scan';rebuildView();fit();ready=true;idx=0;zoom=1;panX=0;panY=0;setGradLegends();document.getElementById('app').style.display='block';draw();}}
-document.getElementById('trk').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{track=parseTrack(r.result);const wh=track.filter(p=>p.hd!=null).length;
-  document.getElementById('trkst').textContent=track.length?track.length+' points loaded ✓ ('+wh+' with heading)':'no points found';document.getElementById('trkst').className=track.length?'ok':'mut';tryReady();};r.readAsText(f);};
-document.getElementById('csv').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{scans=parseCSV(r.result);
-  document.getElementById('csvst').textContent=scans.length?scans.length+' scans loaded ✓':'no scans found';document.getElementById('csvst').className=scans.length?'ok':'mut';tryReady();};r.readAsText(f);};
-document.getElementById('srt').onchange=e=>{const fs=[...e.target.files];if(!fs.length)return;const off=+document.getElementById('offset').value||0;let done=0,all=[];
-  fs.forEach(f=>{const r=new FileReader();r.onload=()=>{all=all.concat(parseSRT(r.result,off));done++;
-    if(done===fs.length){drone=downsample(all,1000);
-      document.getElementById('srtst').textContent=drone.length?drone.length+' drone points from '+fs.length+' file(s) ✓ ['+fmt(drone[0].ms)+' → '+fmt(drone[drone.length-1].ms)+' UTC]':'no drone points found';
-      document.getElementById('srtst').className=drone.length?'ok':'mut';if(ready)draw();}};r.readAsText(f);});};
+function refresh(){applyTZ();rebuildView();draw();}
+function tryReady(){if(trackRaw.length&&scansRaw.length){applyTZ();mode='scan';rebuildView();fit();ready=true;idx=0;zoom=1;panX=0;panY=0;setGradLegends();document.getElementById('app').style.display='block';draw();}}
+fillTZ('tzTrk',0);fillTZ('tzCsv',0);fillTZ('tzSrt',7);fillTZ('tzViz',7);
+document.getElementById('trk').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{trackRaw=parseTrack(r.result);const wh=trackRaw.filter(p=>p.hd!=null).length;
+  document.getElementById('trkst').textContent=trackRaw.length?trackRaw.length+' points loaded ✓ ('+wh+' with heading)':'no points found';document.getElementById('trkst').className=trackRaw.length?'ok':'mut';tryReady();};r.readAsText(f);};
+document.getElementById('csv').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{scansRaw=parseCSV(r.result);
+  document.getElementById('csvst').textContent=scansRaw.length?scansRaw.length+' scans loaded ✓':'no scans found';document.getElementById('csvst').className=scansRaw.length?'ok':'mut';tryReady();};r.readAsText(f);};
+document.getElementById('srt').onchange=e=>{const fs=[...e.target.files];if(!fs.length)return;let done=0,all=[];
+  fs.forEach(f=>{const r=new FileReader();r.onload=()=>{all=all.concat(parseSRT(r.result));done++;
+    if(done===fs.length){droneRaw=downsample(all,1000);
+      document.getElementById('srtst').textContent=droneRaw.length+' drone points from '+fs.length+' file(s) ✓';document.getElementById('srtst').className=droneRaw.length?'ok':'mut';
+      if(ready)refresh();else applyTZ();}};r.readAsText(f);});};
+document.getElementById('tzTrk').onchange=()=>{if(ready)refresh();};
+document.getElementById('tzCsv').onchange=()=>{if(ready)refresh();};
+document.getElementById('tzSrt').onchange=()=>{if(ready)refresh();};
+document.getElementById('tzViz').onchange=()=>{if(ready){draw();}else applyTZ();};
 function setMode(m){mode=m;document.getElementById('modeScan').className=m==='scan'?'on':'';document.getElementById('modeBoat').className=m==='boat'?'on':'';
   document.getElementById('boatStepCtl').style.display=m==='boat'?'inline':'none';idx=0;rebuildView();draw();}
 document.getElementById('modeScan').onclick=()=>setMode('scan');
 document.getElementById('modeBoat').onclick=()=>setMode('boat');
 document.getElementById('stepSec').onchange=()=>{if(mode==='boat'){idx=0;rebuildView();draw();}};
-document.getElementById('applyf').onclick=()=>{fStart=parseLocalDT(document.getElementById('startt').value);fEnd=parseLocalDT(document.getElementById('endt').value);idx=0;rebuildView();fit();draw();};
+document.getElementById('applyf').onclick=()=>{fStart=parseFilterDT(document.getElementById('startt').value);fEnd=parseFilterDT(document.getElementById('endt').value);idx=0;rebuildView();fit();draw();};
 document.getElementById('clearf').onclick=()=>{fStart=fEnd=null;document.getElementById('startt').value='';document.getElementById('endt').value='';idx=0;rebuildView();fit();draw();};
 document.getElementById('slider').oninput=e=>{idx=+e.target.value;draw();};
 document.getElementById('prev').onclick=()=>{idx=Math.max(0,idx-1);draw();};
