@@ -89,14 +89,27 @@ function conv(px,py){const dx=px-C,dy=py-C,rp=Math.hypot(dx,dy);let deg=Math.ata
   const frac=Math.min(rp/R,1)*5,seg=Math.min(Math.floor(frac),4),lo=seg===0?0:RINGDIST[seg-1],hi=RINGDIST[seg];
   let dist=Math.round(lo+(hi-lo)*(frac-seg));if(rp/R>=1)dist=Math.round(1000+(rp/R-1)*1000);
   return{dist:dist,bearing:Math.round(deg),clock:ch};}
-let downXY=null;
-function place(cx,cy){const r=svg.getBoundingClientRect(),px=(cx-r.left)/r.width*S,py=(cy-r.top)/r.height*S;
-  if(Math.hypot(px-C,py-C)>R)return;
+let downXY=null,dragIdx=-1,dragging=false;
+function toPlot(cx,cy){const r=svg.getBoundingClientRect();return[(cx-r.left)/r.width*S,(cy-r.top)/r.height*S];}
+function place(cx,cy){const[px,py]=toPlot(cx,cy);if(Math.hypot(px-C,py-C)>R)return;
   cur.push({px:px,py:py,size:1,drone:false,unknown:false,color:COLORS[cur.length%COLORS.length],...conv(px,py)});grid();list();}
-svg.addEventListener('touchstart',e=>{const t=e.changedTouches[0];downXY=[t.clientX,t.clientY];},{passive:true});
+function hitDot(px,py){for(let i=cur.length-1;i>=0;i--){if(Math.hypot(px-cur[i].px,py-cur[i].py)<=16)return i;}return -1;}
+function moveTo(i,cx,cy){let[px,py]=toPlot(cx,cy);const d=Math.hypot(px-C,py-C);if(d>R){px=C+(px-C)*R/d;py=C+(py-C)*R/d;}
+  const g=cur[i];g.px=px;g.py=py;Object.assign(g,conv(px,py));grid();list();}
+svg.addEventListener('touchstart',e=>{const t=e.changedTouches[0];downXY=[t.clientX,t.clientY];dragging=false;
+  const[px,py]=toPlot(t.clientX,t.clientY);dragIdx=hitDot(px,py);},{passive:true});
+svg.addEventListener('touchmove',e=>{if(dragIdx<0||!downXY)return;const t=e.changedTouches[0];
+  const moved=Math.hypot(t.clientX-downXY[0],t.clientY-downXY[1]);if(!dragging&&moved>12)dragging=true;
+  if(dragging){e.preventDefault();moveTo(dragIdx,t.clientX,t.clientY);}},{passive:false});
 svg.addEventListener('touchend',e=>{e.preventDefault();if(!downXY)return;const t=e.changedTouches[0];
-  const moved=Math.hypot(t.clientX-downXY[0],t.clientY-downXY[1]);downXY=null;if(moved>12)return;place(t.clientX,t.clientY);},{passive:false});
-svg.addEventListener('click',e=>{place(e.clientX,e.clientY);});
+  const moved=Math.hypot(t.clientX-downXY[0],t.clientY-downXY[1]);const wasDrag=dragging;downXY=null;dragIdx=-1;dragging=false;
+  if(wasDrag)return;if(moved>12)return;place(t.clientX,t.clientY);},{passive:false});
+let mDown=null,mIdx=-1,mDrag=false;
+svg.addEventListener('mousedown',e=>{mDown=[e.clientX,e.clientY];mDrag=false;const[px,py]=toPlot(e.clientX,e.clientY);mIdx=hitDot(px,py);});
+svg.addEventListener('mousemove',e=>{if(mIdx<0||!mDown)return;const moved=Math.hypot(e.clientX-mDown[0],e.clientY-mDown[1]);
+  if(!mDrag&&moved>6)mDrag=true;if(mDrag)moveTo(mIdx,e.clientX,e.clientY);});
+svg.addEventListener('mouseup',e=>{if(!mDown)return;const moved=Math.hypot(e.clientX-mDown[0],e.clientY-mDown[1]);const wasDrag=mDrag;mDown=null;mIdx=-1;mDrag=false;
+  if(wasDrag)return;if(moved>6)return;place(e.clientX,e.clientY);});
 function list(){const d=document.getElementById('groups');d.innerHTML='';
   document.getElementById('sel').textContent=cur.length?cur.length+' group(s) this scan':'Tap the plot to add a group.';
   cur.forEach((g,i)=>{const row=document.createElement('div');row.className='grp';
