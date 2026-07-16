@@ -83,8 +83,9 @@ function grid(){svg.innerHTML='';
     const t=ns('text',{x:lx,y:ly+4,'font-size':'12',fill:NUM,'text-anchor':'middle'});t.textContent=h;svg.appendChild(t);}
   const b=ns('text',{x:C,y:15,'font-size':'10',fill:FAINT,'text-anchor':'middle'});b.textContent='bow';svg.appendChild(b);
   cur.forEach(g=>{svg.appendChild(ns('circle',{cx:g.px,cy:g.py,r:12,fill:g.color,stroke:RING,'stroke-width':'2'}));
-      const t=ns('text',{x:g.px,y:g.py+4,'font-size':'12',fill:'#fff','text-anchor':'middle','font-weight':'700'});
-      t.textContent=g.drone?'D':(g.unknown?'?':g.size);svg.appendChild(t);});}
+      const t=ns('text',{x:g.px,y:g.py+4,'font-size':'12',fill:'#fff','text-anchor':'middle','font-weight':'700'});t.textContent=g.unknown?'?':g.size;svg.appendChild(t);
+      if(g.drone){svg.appendChild(ns('circle',{cx:g.px+11,cy:g.py-11,r:5,fill:'#fff',stroke:g.color,'stroke-width':'1.5'}));
+        const dt=ns('text',{x:g.px+11,y:g.py-8,'font-size':'8',fill:g.color,'text-anchor':'middle','font-weight':'700'});dt.textContent='D';svg.appendChild(dt);}});}
 function conv(px,py){const dx=px-C,dy=py-C,rp=Math.hypot(dx,dy);let deg=Math.atan2(dx,-dy)*180/Math.PI;if(deg<0)deg+=360;
   let ch=Math.round(deg/30);if(ch===0)ch=12;
   const frac=Math.min(rp/R,1)*5,seg=Math.min(Math.floor(frac),4),lo=seg===0?0:RINGDIST[seg-1],hi=RINGDIST[seg];
@@ -121,8 +122,7 @@ function list(){const d=document.getElementById('groups');d.innerHTML='';
     const tv=mkSel(TRAVELS,g.travel,v=>g.travel=v);
     const rm=mk('✕',()=>{cur.splice(i,1);recolor();grid();list();});rm.style.color='var(--text-danger,#a32d2d)';
     row.append(sw);
-    if(g.drone){row.append(dr,tv,sp,rm);}
-    else if(g.unknown){row.append(n,uk,dr,tv,sp,rm);}
+    if(g.unknown){row.append(n,uk,dr,tv,sp,rm);}
     else{row.append(mk('−',()=>{g.size=Math.max(1,g.size-1);grid();list();}),n,mk('+',()=>{g.size++;grid();list();}),uk,dr,tv,sp,rm);}
     d.appendChild(row);});}
 function recolor(){cur.forEach((g,i)=>g.color=COLORS[i%COLORS.length]);}
@@ -140,7 +140,7 @@ document.getElementById('erase').onclick=()=>{if(confirm('Erase ALL saved scans?
   if(confirm('Are you sure? This permanently deletes everything.')){log=[];localStorage.removeItem('orcaLog');upd();document.getElementById('out').value='';menu.style.display='none';}}};
 function csvcell(v){const s=String(v);return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
 function toCSV(){let r=['scan_ts_utc,scan_ts_device,group_n,distance_m,clock_hour,rel_bearing_deg,group_size,unknown_size,drone,speed,travel_type'];
-  log.forEach(s=>s.groups.forEach((g,i)=>r.push([s.ts_utc,csvcell(s.ts_device),i+1,g.dist_m,g.clock,g.bearing_deg,(g.drone||g.unknown_size)?'NA':g.size,g.unknown_size?'True':'False',g.drone?'True':'False',g.speed||'',g.travel_type||''].join(','))));return r.join('\n');}
+  log.forEach(s=>s.groups.forEach((g,i)=>r.push([s.ts_utc,csvcell(s.ts_device),i+1,g.dist_m,g.clock,g.bearing_deg,g.unknown_size?'NA':g.size,g.unknown_size?'True':'False',g.drone?'True':'False',g.speed||'',g.travel_type||''].join(','))));return r.join('\n');}
 function flash(t){const m=document.getElementById('msg');m.textContent=t;setTimeout(()=>m.textContent='',2500);}
 document.getElementById('csv').onclick=()=>{mode='csv';document.getElementById('out').value=toCSV()||'(no scans saved yet)';};
 document.getElementById('json').onclick=()=>{mode='json';document.getElementById('out').value=JSON.stringify(log,null,2);};
