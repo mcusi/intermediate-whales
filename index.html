@@ -69,7 +69,7 @@ const GRID=dark?'#555':'#ccc',NUM=dark?'#b4b2a9':'#5f5e5a',FAINT=dark?'#888':'#9
 const COLORS=['#185fa5','#d85a30','#1d9e75','#d4537e','#ba7517','#7f77dd','#639922','#e24b4a','#0f6e56','#993556'];
 const LABELS=['100','300','500','1km',''],RINGDIST=[100,300,500,1000,1000];
 const SPEEDS=[['','speed'],['fast','fast'],['medium','medium'],['slow','slow']];
-const TRAVELS=[['','grp state'],['directional','directional'],['non-directional','non-directional'],['milling','milling'],['stationary', 'stationary'],['cuddle-puddle', 'cuddle-puddle'],['beach rubbing','beach rubbing'],['other','other']];
+const TRAVELS=[['','state'],['directional','directional'],['non-directional','non-directional'],['milling','milling'],['stationary', 'stationary'],['cuddle-puddle', 'cuddle-puddle'],['beach rubbing','beach rubbing'],['other','other']];
 let cur=[],log=JSON.parse(localStorage.getItem('orcaLog')||'[]'),mode='csv';
 function ns(t,a){const e=document.createElementNS('http://www.w3.org/2000/svg',t);for(k in a)e.setAttribute(k,a[k]);return e;}
 function grid(){svg.innerHTML='';
