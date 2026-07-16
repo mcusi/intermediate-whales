@@ -68,8 +68,8 @@ const dark=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').
 const GRID=dark?'#555':'#ccc',NUM=dark?'#b4b2a9':'#5f5e5a',FAINT=dark?'#888':'#999',RING=dark?'#2c2c2a':'#fff';
 const COLORS=['#185fa5','#d85a30','#1d9e75','#d4537e','#ba7517','#7f77dd','#639922','#e24b4a','#0f6e56','#993556'];
 const LABELS=['100','300','500','1km',''],RINGDIST=[100,300,500,1000,1000];
-const SPEEDS=[['','spd'],['fast','fast'],['medium','med'],['slow','slow']];
-const TRAVELS=[['','trv'],['directional','dir'],['non-directional','non-dir'],['milling','mill']];
+const SPEEDS=[['','speed'],['fast','fast'],['medium','medium'],['slow','slow']];
+const TRAVELS=[['','travel'],['directional','directional'],['non-directional','non-directional'],['milling','milling']];
 let cur=[],log=JSON.parse(localStorage.getItem('orcaLog')||'[]'),mode='csv';
 function ns(t,a){const e=document.createElementNS('http://www.w3.org/2000/svg',t);for(k in a)e.setAttribute(k,a[k]);return e;}
 function grid(){svg.innerHTML='';
@@ -116,7 +116,7 @@ function list(){const d=document.getElementById('groups');d.innerHTML='';
     const sw=document.createElement('span');sw.className='dot';sw.style.background=g.color;
     const mk=(t,f)=>{const b=document.createElement('button');b.textContent=t;b.style.padding='4px 11px';b.onclick=f;return b;};
     const n=document.createElement('span');n.textContent=g.unknown?'—':g.size;n.style.cssText='min-width:20px;text-align:center;font-weight:500;';
-    const uk=document.createElement('button');uk.textContent='?num';uk.className=g.unknown?'on':'';uk.style.padding='4px 9px';uk.onclick=()=>{g.unknown=!g.unknown;grid();list();};
+    const uk=document.createElement('button');uk.textContent='unknown num';uk.className=g.unknown?'on':'';uk.style.padding='4px 9px';uk.onclick=()=>{g.unknown=!g.unknown;grid();list();};
     const dr=document.createElement('button');dr.textContent='drone';dr.className=g.drone?'on':'';dr.style.padding='4px 9px';dr.onclick=()=>{g.drone=!g.drone;grid();list();};
     const sp=mkSel(SPEEDS,g.speed,v=>g.speed=v);
     const tv=mkSel(TRAVELS,g.travel,v=>g.travel=v);
