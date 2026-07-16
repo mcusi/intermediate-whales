@@ -111,10 +111,10 @@ function build(){scans.forEach(s=>{const b=boatAt(s.ms),c=cogAt(b.i);s.boat=b.po
   proj=(la,lo)=>[ox+((lo-ctrLon)*k)*sc,oy-((la-ctrLat))*sc];}
 function fmt(ms){return new Date(ms).toISOString().replace('T',' ').replace(/\..*/,'')+'Z';}
 function applyT(){if(scene)scene.setAttribute('transform','translate('+panX+' '+panY+') scale('+zoom+')');}
-function dot(x,y,g,op){scene.appendChild(ns('circle',{cx:x,cy:y,r:11,fill:DOT,stroke:dark?'#1a1a18':'#fff','stroke-width':'2',opacity:op}));
-  const t=ns('text',{x:x,y:y+4,'font-size':'11',fill:DTXT,'text-anchor':'middle','font-weight':'700'});t.textContent=g.unknown?'?':g.size;scene.appendChild(t);
-  if(g.drone){scene.appendChild(ns('circle',{cx:x+10,cy:y-10,r:4.5,fill:'#fff',stroke:DOT,'stroke-width':'1.5'}));
-    const d=ns('text',{x:x+10,y:y-7,'font-size':'7',fill:DOT,'text-anchor':'middle','font-weight':'700'});d.textContent='D';scene.appendChild(d);}}
+function dot(x,y,g,op){const z=zoom;scene.appendChild(ns('circle',{cx:x,cy:y,r:11/z,fill:DOT,stroke:dark?'#1a1a18':'#fff','stroke-width':(2/z),opacity:op}));
+  const t=ns('text',{x:x,y:y+4/z,'font-size':(11/z),fill:DTXT,'text-anchor':'middle','font-weight':'700'});t.textContent=g.unknown?'?':g.size;scene.appendChild(t);
+  if(g.drone){scene.appendChild(ns('circle',{cx:x+10/z,cy:y-10/z,r:4.5/z,fill:'#fff',stroke:DOT,'stroke-width':(1.5/z)}));
+    const d=ns('text',{x:x+10/z,y:y-7/z,'font-size':(7/z),fill:DOT,'text-anchor':'middle','font-weight':'700'});d.textContent='D';scene.appendChild(d);}}
 function draw(){svg.innerHTML='';if(!ready)return;
   scene=ns('g',{});svg.appendChild(scene);applyT();
   if(drone.length){let dp='';drone.forEach((p,i)=>{const[x,y]=proj(p.lat,p.lon);dp+=(i?'L':'M')+x.toFixed(1)+' '+y.toFixed(1);});
@@ -122,15 +122,16 @@ function draw(){svg.innerHTML='';if(!ready)return;
   let path='';track.forEach((p,i)=>{const[x,y]=proj(p.lat,p.lon);path+=(i?'L':'M')+x.toFixed(1)+' '+y.toFixed(1);});
   scene.appendChild(ns('path',{d:path,fill:'none',stroke:LINE,'stroke-width':(2/zoom).toFixed(2),'stroke-linejoin':'round'}));
   const s=scans[idx];
-  if(trail&&idx>0&&scans[idx-1].inRange){scans[idx-1].gpts.forEach(g=>{const[x,y]=proj(g.lat,g.lon);scene.appendChild(ns('circle',{cx:x,cy:y,r:11,fill:DOT,stroke:'none',opacity:'0.16'}));});}
+  if(trail&&idx>0&&scans[idx-1].inRange){scans[idx-1].gpts.forEach(g=>{const[x,y]=proj(g.lat,g.lon);scene.appendChild(ns('circle',{cx:x,cy:y,r:11/zoom,fill:DOT,stroke:'none',opacity:'0.16'}));});}
+  // if(trail&&idx>0&&scans[idx-1].inRange){scans[idx-1].gpts.forEach(g=>{const[x,y]=proj(g.lat,g.lon);scene.appendChild(ns('circle',{cx:x,cy:y,r:11,fill:DOT,stroke:'none',opacity:'0.16'}));});}
   if(s.inRange){const[bx,by]=proj(s.boat.lat,s.boat.lon),hr=(s.cog-90)*D2R;
-    scene.appendChild(ns('line',{x1:bx,y1:by,x2:bx+16*Math.cos(hr),y2:by+16*Math.sin(hr),stroke:BOAT,'stroke-width':'2'}));
-    scene.appendChild(ns('circle',{cx:bx,cy:by,r:6,fill:BOAT,stroke:dark?'#1a1a18':'#fff','stroke-width':'2'}));
-    s.gpts.forEach(g=>{const[x,y]=proj(g.lat,g.lon);dot(x,y,g,'0.8');});}
+      scene.appendChild(ns('line',{x1:bx,y1:by,x2:bx+(16/zoom)*Math.cos(hr),y2:by+(16/zoom)*Math.sin(hr),stroke:BOAT,'stroke-width':(2/zoom)}));
+      scene.appendChild(ns('circle',{cx:bx,cy:by,r:6/zoom,fill:BOAT,stroke:dark?'#1a1a18':'#fff','stroke-width':(2/zoom)}));
+      s.gpts.forEach(g=>{const[x,y]=proj(g.lat,g.lon);dot(x,y,g,'0.8');});}
   let dstat='';const dpos=posAt(drone,s.ms);
-  if(dpos){const[dx,dy]=proj(dpos.lat,dpos.lon);scene.appendChild(ns('circle',{cx:dx,cy:dy,r:6,fill:DRONE,stroke:dark?'#1a1a18':'#fff','stroke-width':'2'}));
-    const dl=ns('text',{x:dx,y:dy-9,'font-size':'9',fill:DRONE,'text-anchor':'middle','font-weight':'700'});dl.textContent='drone';scene.appendChild(dl);}
-  else if(drone.length){dstat=' · drone not airborne at this time';}
+    if(dpos){const[dx,dy]=proj(dpos.lat,dpos.lon);scene.appendChild(ns('circle',{cx:dx,cy:dy,r:6/zoom,fill:DRONE,stroke:dark?'#1a1a18':'#fff','stroke-width':(2/zoom)}));
+      const dl=ns('text',{x:dx,y:dy-9/zoom,'font-size':(9/zoom),fill:DRONE,'text-anchor':'middle','font-weight':'700'});dl.textContent='drone';scene.appendChild(dl);}
+    else if(drone.length){dstat=' · drone not airborne at this time';}
   document.getElementById('stamp').textContent=fmt(s.ms);
   const tot=s.groups.reduce((a,g)=>a+(g.unknown||g.size==null?0:g.size),0);
   document.getElementById('meta').textContent=s.groups.length+' groups · '+tot+' whales · boat '+s.boat.lat.toFixed(5)+', '+s.boat.lon.toFixed(5)+' · heading '+Math.round(s.cog)+'°'+dstat+'   ('+(idx+1)+' of '+scans.length+')';
