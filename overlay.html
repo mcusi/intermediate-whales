@@ -94,7 +94,6 @@ const GRID=dark?'#555':'#ccc',FAINT=dark?'#888':'#999';
 const DOT=dark?'#85b7eb':'#185fa5',BOAT=dark?'#f2f0e9':'#1a1a18',DTXT=dark?'#1a1a18':'#fff';
 const DRONE=dark?'#5dcaa5':'#1d9e75';
 const D2R=Math.PI/180,R2D=180/Math.PI,MPD=111320,HEADING_GAP_MS=60000;
-// gradient endpoints: boat = blue->magenta, drone = teal->yellow
 const BOAT_G=[[46,110,180],[200,60,140]],DRONE_G=[[26,140,110],[220,190,40]];
 let track=[],scans=[],drone=[],view=[],idx=0,trail=true,timer=null,proj=null,ready=false;
 let zoom=1,panX=0,panY=0,scene=null,fStart=null,fEnd=null,mode='scan',boatSteps=[];
@@ -141,9 +140,13 @@ function dRange(){if(!drone.length)return[0,1];return[drone[0].ms,drone[drone.le
 function buildScanFrame(s){const b=boatAt(s.ms),hd=headingAt(s.ms);const fr={ms:s.ms,boat:b.pos,hd:hd,gpts:[]};
   if(b.pos&&hd!=null)fr.gpts=s.groups.map(g=>{const abs=(hd+g.bearing)%360,p=dest(b.pos.lat,b.pos.lon,abs,g.dist);return Object.assign({},g,{lat:p.lat,lon:p.lon});});
   return fr;}
-function buildBoatSteps(){boatSteps=[];if(!track.length)return;const step=Math.max(1,(+document.getElementById('stepSec').value||15))*1000;
+function buildBoatSteps(){boatSteps=[];if(!track.length)return;const stepMs=Math.max(1,(+document.getElementById('stepSec').value||15))*1000;
   const s0=fStart!=null?Math.max(track[0].ms,fStart):track[0].ms,s1=fEnd!=null?Math.min(track[track.length-1].ms,fEnd):track[track.length-1].ms;
-  for(let t=s0;t<=s1;t+=step){const b=boatAt(t),hd=headingAt(t);boatSteps.push({ms:t,boat:b.pos,hd:hd,gpts:[]});}}
+  const inRange=scans.filter(s=>s.ms>=s0-stepMs&&s.ms<=s1+stepMs);
+  for(let t=s0;t<=s1;t+=stepMs){const b=boatAt(t),hd=headingAt(t);const fr={ms:t,boat:b.pos,hd:hd,gpts:[]};
+    let best=null,bd=stepMs/2;for(const s of inRange){const d=Math.abs(s.ms-t);if(d<=bd){bd=d;best=s;}}
+    if(best&&b.pos&&hd!=null)fr.gpts=best.groups.map(g=>{const abs=(hd+g.bearing)%360,p=dest(b.pos.lat,b.pos.lon,abs,g.dist);return Object.assign({},g,{lat:p.lat,lon:p.lon});});
+    boatSteps.push(fr);}}
 function rebuildView(){if(mode==='scan'){view=scans.filter(s=>(fStart==null||s.ms>=fStart)&&(fEnd==null||s.ms<=fEnd)).map(buildScanFrame);}
   else{buildBoatSteps();view=boatSteps;}if(idx>=view.length)idx=0;}
 function fit(){let mnla=90,mxla=-90,mnlo=180,mxlo=-180;const ext=(la,lo)=>{mnla=Math.min(mnla,la);mxla=Math.max(mxla,la);mnlo=Math.min(mnlo,lo);mxlo=Math.max(mxlo,lo);};
@@ -174,7 +177,7 @@ function draw(){svg.innerHTML='';if(!ready)return;scene=ns('g',{});svg.appendChi
   let dstat='';const dpos=posAt(drone,s.ms);
   if(dpos){const[dx,dy]=proj(dpos.lat,dpos.lon);scene.appendChild(ns('circle',{cx:dx,cy:dy,r:6/zoom,fill:DRONE,stroke:dark?'#1a1a18':'#fff','stroke-width':(2/zoom)}));
     const dl=ns('text',{x:dx,y:dy-9/zoom,'font-size':(9/zoom),fill:DRONE,'text-anchor':'middle','font-weight':'700'});dl.textContent='drone';scene.appendChild(dl);}
-  else if(drone.length){dstat=' · drone not airborne';}
+  else if(drone.length){const dr=dRange();dstat=' · drone: '+(s.ms<dr[0]?'flight starts '+fmt(dr[0]):s.ms>dr[1]?'flight ended '+fmt(dr[1]):'gap here');}
   document.getElementById('stamp').textContent=fmt(s.ms);
   const tot=s.gpts.reduce((a,g)=>a+(g.drone||g.size==null?0:g.size),0);
   document.getElementById('meta').textContent=(s.boat?'boat '+s.boat.lat.toFixed(5)+', '+s.boat.lon.toFixed(5):'boat: no position')+(s.hd!=null?' · heading '+Math.round(s.hd)+'°':'')+(s.gpts.length?' · '+s.gpts.length+' groups · '+tot+' whales':'')+dstat+'   ('+(idx+1)+' of '+view.length+', '+mode+')';
@@ -195,7 +198,7 @@ document.getElementById('csv').onchange=e=>{const f=e.target.files[0];if(!f)retu
 document.getElementById('srt').onchange=e=>{const fs=[...e.target.files];if(!fs.length)return;const off=+document.getElementById('offset').value||0;let done=0,all=[];
   fs.forEach(f=>{const r=new FileReader();r.onload=()=>{all=all.concat(parseSRT(r.result,off));done++;
     if(done===fs.length){drone=downsample(all,1000);
-      document.getElementById('srtst').textContent=drone.length?drone.length+' drone points from '+fs.length+' file(s) ✓':'no drone points found';
+      document.getElementById('srtst').textContent=drone.length?drone.length+' drone points from '+fs.length+' file(s) ✓ ['+fmt(drone[0].ms)+' → '+fmt(drone[drone.length-1].ms)+' UTC]':'no drone points found';
       document.getElementById('srtst').className=drone.length?'ok':'mut';if(ready)draw();}};r.readAsText(f);});};
 function setMode(m){mode=m;document.getElementById('modeScan').className=m==='scan'?'on':'';document.getElementById('modeBoat').className=m==='boat'?'on':'';
   document.getElementById('boatStepCtl').style.display=m==='boat'?'inline':'none';idx=0;rebuildView();draw();}
