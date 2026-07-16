@@ -18,6 +18,8 @@ button{font:inherit;font-size:15px;background:var(--surf);color:var(--txt);borde
 button:active{transform:scale(.97);}
 button.primary{border-color:var(--acc);color:var(--acc);}
 button.on{background:var(--accbg);border-color:var(--acc);color:var(--acc);}
+select{font:inherit;font-size:14px;background:var(--surf);color:var(--txt);border:0.5px solid var(--bd);border-radius:8px;padding:5px 24px 5px 8px;width:auto;}
+select.set{background:var(--accbg);color:var(--acc);border-color:var(--acc);}
 .menubtn{padding:8px 12px;font-size:20px;line-height:1;}
 .menu{position:absolute;right:0;top:44px;background:var(--surf);border:0.5px solid var(--bd);border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.15);padding:6px;z-index:10;min-width:160px;}
 .menu button{display:block;width:100%;text-align:left;border:none;background:none;padding:12px;border-radius:6px;}
@@ -26,10 +28,9 @@ input{font:inherit;font-size:15px;background:var(--surf);color:var(--txt);border
 textarea{width:100%;min-height:110px;font-family:ui-monospace,monospace;font-size:12px;background:var(--surf);color:var(--txt);border:0.5px solid var(--bd);border-radius:8px;padding:8px;}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
 svg{width:100%;max-width:520px;display:block;margin:0 auto;touch-action:none;background:var(--surf);border:0.5px solid var(--bd);border-radius:12px;}
-.grp{display:flex;align-items:center;gap:8px;font-size:15px;padding:7px 0;border-bottom:0.5px solid var(--bd);flex-wrap:wrap;}
+.grp{display:flex;align-items:center;gap:6px;font-size:15px;padding:8px 0;border-bottom:0.5px solid var(--bd);flex-wrap:wrap;}
 .dot{width:16px;height:16px;border-radius:50%;flex:none;border:1px solid rgba(0,0,0,.25);}
 .mut{color:var(--txt2);font-size:14px;}
-label{font-size:14px;color:var(--txt2);}
 .controls{margin-top:16px;}
 </style>
 </head>
@@ -43,7 +44,6 @@ label{font-size:14px;color:var(--txt2);}
 </div>
 <svg id="plot" viewBox="0 0 360 360"></svg>
 <div class="controls">
-  <input id="hdg" type="hidden" value="">
   <div id="sel" class="mut" style="margin-bottom:8px;">Tap the plot to add a group.</div>
   <div id="groups" style="margin-bottom:12px;"></div>
   <div class="row" style="margin-bottom:12px;">
@@ -68,6 +68,8 @@ const dark=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').
 const GRID=dark?'#555':'#ccc',NUM=dark?'#b4b2a9':'#5f5e5a',FAINT=dark?'#888':'#999',RING=dark?'#2c2c2a':'#fff';
 const COLORS=['#185fa5','#d85a30','#1d9e75','#d4537e','#ba7517','#7f77dd','#639922','#e24b4a','#0f6e56','#993556'];
 const LABELS=['100','300','500','1km',''],RINGDIST=[100,300,500,1000,1000];
+const SPEEDS=[['','spd'],['fast','fast'],['medium','med'],['slow','slow']];
+const TRAVELS=[['','trv'],['directional','dir'],['non-directional','non-dir'],['milling','mill']];
 let cur=[],log=JSON.parse(localStorage.getItem('orcaLog')||'[]'),mode='csv';
 function ns(t,a){const e=document.createElementNS('http://www.w3.org/2000/svg',t);for(k in a)e.setAttribute(k,a[k]);return e;}
 function grid(){svg.innerHTML='';
@@ -92,7 +94,7 @@ function conv(px,py){const dx=px-C,dy=py-C,rp=Math.hypot(dx,dy);let deg=Math.ata
 let downXY=null,dragIdx=-1,dragging=false,activeId=null;
 function toPlot(cx,cy){const r=svg.getBoundingClientRect();return[(cx-r.left)/r.width*S,(cy-r.top)/r.height*S];}
 function place(cx,cy){const[px,py]=toPlot(cx,cy);if(Math.hypot(px-C,py-C)>R)return;
-  cur.push({px:px,py:py,size:1,drone:false,unknown:false,color:COLORS[cur.length%COLORS.length],...conv(px,py)});grid();list();}
+  cur.push({px:px,py:py,size:1,drone:false,unknown:false,speed:'',travel:'',color:COLORS[cur.length%COLORS.length],...conv(px,py)});grid();list();}
 function hitDot(px,py){for(let i=cur.length-1;i>=0;i--){if(Math.hypot(px-cur[i].px,py-cur[i].py)<=18)return i;}return -1;}
 function moveTo(i,cx,cy){let[px,py]=toPlot(cx,cy);const d=Math.hypot(px-C,py-C);if(d>R){px=C+(px-C)*R/d;py=C+(py-C)*R/d;}
   const g=cur[i];g.px=px;g.py=py;Object.assign(g,conv(px,py));grid();list();}
@@ -106,30 +108,28 @@ function endPtr(e){if(e.pointerId!==activeId)return;const moved=downXY?Math.hypo
   activeId=null;downXY=null;dragIdx=-1;dragging=false;
   if(wasDrag||moved>THRESH)return;place(e.clientX,e.clientY);}
 svg.addEventListener('pointerup',endPtr);svg.addEventListener('pointercancel',e=>{if(e.pointerId===activeId){activeId=null;downXY=null;dragIdx=-1;dragging=false;}});
-let mDown=null,mIdx=-1,mDrag=false;
-svg.addEventListener('mousedown',e=>{mDown=[e.clientX,e.clientY];mDrag=false;const[px,py]=toPlot(e.clientX,e.clientY);mIdx=hitDot(px,py);});
-svg.addEventListener('mousemove',e=>{if(mIdx<0||!mDown)return;const moved=Math.hypot(e.clientX-mDown[0],e.clientY-mDown[1]);
-  if(!mDrag&&moved>6)mDrag=true;if(mDrag)moveTo(mIdx,e.clientX,e.clientY);});
-svg.addEventListener('mouseup',e=>{if(!mDown)return;const moved=Math.hypot(e.clientX-mDown[0],e.clientY-mDown[1]);const wasDrag=mDrag;mDown=null;mIdx=-1;mDrag=false;
-  if(wasDrag)return;if(moved>6)return;place(e.clientX,e.clientY);});
+function mkSel(opts,val,cb){const s=document.createElement('select');opts.forEach(([v,lab])=>{const o=document.createElement('option');o.value=v;o.textContent=lab;if(v===val)o.selected=true;s.appendChild(o);});
+  if(val)s.className='set';s.onchange=()=>{cb(s.value);s.className=s.value?'set':'';};return s;}
 function list(){const d=document.getElementById('groups');d.innerHTML='';
   document.getElementById('sel').textContent=cur.length?cur.length+' group(s) this scan':'Tap the plot to add a group.';
   cur.forEach((g,i)=>{const row=document.createElement('div');row.className='grp';
     const sw=document.createElement('span');sw.className='dot';sw.style.background=g.color;
-    const lab=document.createElement('span');lab.style.cssText='flex:1;color:var(--txt2);min-width:100px;';lab.textContent=g.dist+'m · '+g.clock+" o'clock";
-    const mk=(t,f)=>{const b=document.createElement('button');b.textContent=t;b.style.padding='4px 12px';b.onclick=f;return b;};
-    const n=document.createElement('span');n.textContent=g.unknown?'—':g.size;n.style.cssText='min-width:22px;text-align:center;font-weight:500;';
-    const dr=document.createElement('button');dr.textContent='drone';dr.className=g.drone?'on':'';dr.style.padding='4px 10px';dr.onclick=()=>{g.drone=!g.drone;grid();list();};
-    const uk=document.createElement('button');uk.textContent='unknown size';uk.className=g.unknown?'on':'';uk.style.padding='4px 10px';uk.onclick=()=>{g.unknown=!g.unknown;grid();list();};
-    if(g.unknown){row.append(sw,lab,uk,dr,mk('✕',()=>{cur.splice(i,1);recolor();grid();list();}));}
-    else{row.append(sw,lab,mk('−',()=>{g.size=Math.max(1,g.size-1);grid();list();}),n,mk('+',()=>{g.size++;grid();list();}),uk,dr,mk('✕',()=>{cur.splice(i,1);recolor();grid();list();}));}
+    const mk=(t,f)=>{const b=document.createElement('button');b.textContent=t;b.style.padding='4px 11px';b.onclick=f;return b;};
+    const n=document.createElement('span');n.textContent=g.unknown?'—':g.size;n.style.cssText='min-width:20px;text-align:center;font-weight:500;';
+    const uk=document.createElement('button');uk.textContent='?num';uk.className=g.unknown?'on':'';uk.style.padding='4px 9px';uk.onclick=()=>{g.unknown=!g.unknown;grid();list();};
+    const dr=document.createElement('button');dr.textContent='drone';dr.className=g.drone?'on':'';dr.style.padding='4px 9px';dr.onclick=()=>{g.drone=!g.drone;grid();list();};
+    const sp=mkSel(SPEEDS,g.speed,v=>g.speed=v);
+    const tv=mkSel(TRAVELS,g.travel,v=>g.travel=v);
+    const rm=mk('✕',()=>{cur.splice(i,1);recolor();grid();list();});rm.style.color='var(--text-danger,#a32d2d)';
+    row.append(sw);
+    if(g.unknown){row.append(n);}else{row.append(mk('−',()=>{g.size=Math.max(1,g.size-1);grid();list();}),n,mk('+',()=>{g.size++;grid();list();}));}
+    row.append(uk,dr,sp,tv,rm);
     d.appendChild(row);});}
 function recolor(){cur.forEach((g,i)=>g.color=COLORS[i%COLORS.length]);}
 function upd(){document.getElementById('count').textContent=log.length+' scans saved';}
-document.getElementById('save').onclick=()=>{if(!cur.length)return;
-  const hd=document.getElementById('hdg').value,now=new Date();
-  log.push({ts_utc:now.toISOString(),ts_device:now.toString(),boat_heading_deg:hd===''?null:+hd,
-    groups:cur.map(g=>({dist_m:g.dist,clock:g.clock,bearing_deg:g.bearing,size:g.unknown?null:g.size,unknown_size:g.unknown,drone:g.drone}))});
+document.getElementById('save').onclick=()=>{if(!cur.length)return;const now=new Date();
+  log.push({ts_utc:now.toISOString(),ts_device:now.toString(),
+    groups:cur.map(g=>({dist_m:g.dist,clock:g.clock,bearing_deg:g.bearing,size:g.unknown?null:g.size,unknown_size:g.unknown,drone:g.drone,speed:g.speed,travel_type:g.travel}))});
   localStorage.setItem('orcaLog',JSON.stringify(log));cur=[];grid();list();upd();};
 document.getElementById('undo').onclick=()=>{cur.pop();grid();list();};
 document.getElementById('clear').onclick=()=>{cur=[];grid();list();};
@@ -139,8 +139,8 @@ document.addEventListener('click',e=>{if(!e.target.closest('#menu')&&e.target.id
 document.getElementById('erase').onclick=()=>{if(confirm('Erase ALL saved scans? Make sure you have exported first. This cannot be undone.')){
   if(confirm('Are you sure? This permanently deletes everything.')){log=[];localStorage.removeItem('orcaLog');upd();document.getElementById('out').value='';menu.style.display='none';}}};
 function csvcell(v){const s=String(v);return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
-function toCSV(){let r=['scan_ts_utc,scan_ts_device,boat_heading_deg,group_n,distance_m,clock_hour,rel_bearing_deg,group_size,unknown_size,drone'];
-  log.forEach(s=>s.groups.forEach((g,i)=>r.push([s.ts_utc,csvcell(s.ts_device),s.boat_heading_deg??'',i+1,g.dist_m,g.clock,g.bearing_deg,g.unknown_size?'NA':g.size,g.unknown_size?'True':'False',g.drone?'True':'False'].join(','))));return r.join('\n');}
+function toCSV(){let r=['scan_ts_utc,scan_ts_device,group_n,distance_m,clock_hour,rel_bearing_deg,group_size,unknown_size,drone,speed,travel_type'];
+  log.forEach(s=>s.groups.forEach((g,i)=>r.push([s.ts_utc,csvcell(s.ts_device),i+1,g.dist_m,g.clock,g.bearing_deg,g.unknown_size?'NA':g.size,g.unknown_size?'True':'False',g.drone?'True':'False',g.speed||'',g.travel_type||''].join(','))));return r.join('\n');}
 function flash(t){const m=document.getElementById('msg');m.textContent=t;setTimeout(()=>m.textContent='',2500);}
 document.getElementById('csv').onclick=()=>{mode='csv';document.getElementById('out').value=toCSV()||'(no scans saved yet)';};
 document.getElementById('json').onclick=()=>{mode='json';document.getElementById('out').value=JSON.stringify(log,null,2);};
