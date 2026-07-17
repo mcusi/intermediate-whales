@@ -143,7 +143,7 @@ document.getElementById('erase').onclick=()=>{if(confirm('Erase ALL saved scans?
   if(confirm('Are you sure? This permanently deletes everything.')){log=[];localStorage.removeItem('orcaLog');upd();document.getElementById('out').value='';menu.style.display='none';}}};
 function csvcell(v){const s=String(v);return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
 function toCSV(){let r=['scan_ts_utc,scan_ts_device,group_n,group_letter,distance_m,clock_hour,rel_bearing_deg,group_size,unknown_size,drone,speed,travel_type'];
-  log.forEach(s=>s.groups.forEach((g,i)=>r.push([s.ts_utc,csvcell(s.ts_device),i+1,g.letter||'',g.dist_m,g.clock,g.bearing_deg,(g.drone||g.unknown_size)?'NA':g.size,g.unknown_size?'True':'False',g.drone?'True':'False',g.speed||'',g.travel_type||''].join(','))));return r.join('\n');}
+  log.forEach(s=>s.groups.forEach((g,i)=>r.push([s.ts_utc,csvcell(s.ts_device),i+1,g.letter||'',g.dist_m,g.clock,g.bearing_deg,g.unknown_size?'NA':g.size,g.unknown_size?'True':'False',g.drone?'True':'False',g.speed||'',g.travel_type||''].join(','))));return r.join('\n');}
 function flash(t){const m=document.getElementById('msg');m.textContent=t;setTimeout(()=>m.textContent='',2500);}
 document.getElementById('csv').onclick=()=>{mode='csv';document.getElementById('out').value=toCSV()||'(no scans saved yet)';};
 document.getElementById('json').onclick=()=>{mode='json';document.getElementById('out').value=JSON.stringify(log,null,2);};
