@@ -71,7 +71,7 @@ const GRID=dark?'#555':'#ccc',NUM=dark?'#b4b2a9':'#5f5e5a',FAINT=dark?'#888':'#9
 const COLORS=['#185fa5','#d85a30','#1d9e75','#d4537e','#ba7517','#7f77dd','#639922','#e24b4a','#0f6e56','#993556'];
 const LABELS=['100','300','500','1km',''],RINGDIST=[100,300,500,1000,1000];
 const SPEEDS=[['','speed'],['fast','fast'],['medium','medium'],['slow','slow']];
-const TRAVELS=[['','state'],['directional','directional'],['non-directional','non-directional'],['milling','milling'],['stationary', 'stationary'],['cuddle-puddle', 'cuddle-puddle'],['beach rubbing','beach rubbing'],['other','other']];
+const TRAVELS=[['','state'],['directional','directional'],['non-directional','non-directional'],['milling','milling'],['stationary','stationary'],['cuddle-puddle','cuddle-puddle'],['beach rubbing','beach rubbing'],['other','other']];
 let cur=[],log=JSON.parse(localStorage.getItem('orcaLog')||'[]'),mode='csv';
 let letterSeq=0;
 function nextLetter(){const L=String.fromCharCode(65+(letterSeq%26));letterSeq++;return L;}
@@ -95,7 +95,7 @@ function conv(px,py){const dx=px-C,dy=py-C,rp=Math.hypot(dx,dy);let deg=Math.ata
   const frac=Math.min(rp/R,1)*5,seg=Math.min(Math.floor(frac),4),lo=seg===0?0:RINGDIST[seg-1],hi=RINGDIST[seg];
   let dist=Math.round(lo+(hi-lo)*(frac-seg));if(rp/R>=1)dist=Math.round(1000+(rp/R-1)*1000);
   return{dist:dist,bearing:Math.round(deg),clock:ch};}
-let downXY=null,dragIdx=-1,dragging=false,activeId=null;
+let downXY=null,dragIdx=-1,dragging=false,activeId=null,pressTimer=null,consumed=false;
 function toPlot(cx,cy){const r=svg.getBoundingClientRect();return[(cx-r.left)/r.width*S,(cy-r.top)/r.height*S];}
 function place(cx,cy){const[px,py]=toPlot(cx,cy);if(Math.hypot(px-C,py-C)>R)return;
   cur.push({px:px,py:py,size:1,drone:false,unknown:false,speed:'',travel:'',letter:nextLetter(),color:COLORS[cur.length%COLORS.length],...conv(px,py)});grid();list();}
@@ -103,28 +103,25 @@ function hitDot(px,py){for(let i=cur.length-1;i>=0;i--){if(Math.hypot(px-cur[i].
 function moveTo(i,cx,cy){let[px,py]=toPlot(cx,cy);const d=Math.hypot(px-C,py-C);if(d>R){px=C+(px-C)*R/d;py=C+(py-C)*R/d;}
   const g=cur[i];g.px=px;g.py=py;Object.assign(g,conv(px,py));grid();list();}
 const THRESH=8;
-let lastTapT=0,lastTapIdx=-1;
 svg.addEventListener('pointerdown',e=>{if(activeId!==null)return;activeId=e.pointerId;svg.setPointerCapture(e.pointerId);
-  downXY=[e.clientX,e.clientY];dragging=false;const[px,py]=toPlot(e.clientX,e.clientY);dragIdx=hitDot(px,py);
-  const now=Date.now();
-  console.log('tap: hitDot='+dragIdx+' gap='+(now-lastTapT)+' lastIdx='+lastTapIdx);
-  if(dragIdx>=0&&dragIdx===lastTapIdx&&now-lastTapT<400){console.log('DOUBLE-TAP fired on group '+dragIdx);highlightRow(dragIdx);lastTapT=0;lastTapIdx=-1;}
-  else{lastTapT=now;lastTapIdx=dragIdx;}});
-svg.addEventListener('pointermove',e=>{if(e.pointerId!==activeId||dragIdx<0||!downXY)return;e.preventDefault();
-  const moved=Math.hypot(e.clientX-downXY[0],e.clientY-downXY[1]);if(!dragging&&moved>THRESH)dragging=true;
+  downXY=[e.clientX,e.clientY];dragging=false;consumed=false;const[px,py]=toPlot(e.clientX,e.clientY);dragIdx=hitDot(px,py);
+  if(pressTimer){clearTimeout(pressTimer);pressTimer=null;}
+  if(dragIdx>=0){pressTimer=setTimeout(()=>{if(!dragging){consumed=true;highlightRow(dragIdx);navigator.vibrate&&navigator.vibrate(20);}},500);}});
+svg.addEventListener('pointermove',e=>{if(e.pointerId!==activeId||dragIdx<0||!downXY||consumed)return;e.preventDefault();
+  const moved=Math.hypot(e.clientX-downXY[0],e.clientY-downXY[1]);if(!dragging&&moved>THRESH){dragging=true;if(pressTimer){clearTimeout(pressTimer);pressTimer=null;}}
   if(dragging)moveTo(dragIdx,e.clientX,e.clientY);});
-function endPtr(e){if(e.pointerId!==activeId)return;const moved=downXY?Math.hypot(e.clientX-downXY[0],e.clientY-downXY[1]):0;const wasDrag=dragging;
-  activeId=null;downXY=null;dragIdx=-1;dragging=false;
-  if(wasDrag||moved>THRESH)return;place(e.clientX,e.clientY);}
-svg.addEventListener('pointerup',endPtr);svg.addEventListener('pointercancel',e=>{if(e.pointerId===activeId){activeId=null;downXY=null;dragIdx=-1;dragging=false;}});
+function endPtr(e){if(e.pointerId!==activeId)return;const moved=downXY?Math.hypot(e.clientX-downXY[0],e.clientY-downXY[1]):0;const wasDrag=dragging,wasConsumed=consumed;
+  if(pressTimer){clearTimeout(pressTimer);pressTimer=null;}
+  activeId=null;downXY=null;dragIdx=-1;dragging=false;consumed=false;
+  if(wasDrag||wasConsumed||moved>THRESH)return;place(e.clientX,e.clientY);}
+svg.addEventListener('pointerup',endPtr);svg.addEventListener('pointercancel',e=>{if(e.pointerId===activeId){if(pressTimer){clearTimeout(pressTimer);pressTimer=null;}activeId=null;downXY=null;dragIdx=-1;dragging=false;consumed=false;}});
 function mkSel(opts,val,cb){const s=document.createElement('select');opts.forEach(([v,lab])=>{const o=document.createElement('option');o.value=v;o.textContent=lab;if(v===val)o.selected=true;s.appendChild(o);});
   if(val)s.className='set';s.onchange=()=>{cb(s.value);s.className=s.value?'set':'';};return s;}
 function list(){const d=document.getElementById('groups');d.innerHTML='';
   document.getElementById('sel').textContent=cur.length?cur.length+' group(s) this scan':'Tap the plot to add a group.';
-  cur.forEach((g,i)=>{const row=document.createElement('div');row.className='grp';
+  cur.forEach((g,i)=>{const row=document.createElement('div');row.className='grp';row.dataset.gi=i;
     const lt=document.createElement('span');lt.textContent=g.letter;lt.style.cssText='font-weight:700;min-width:16px;text-align:center;';
     const sw=document.createElement('span');sw.className='dot';sw.style.background=g.color;
-    row.dataset.gi=i;
     const mk=(t,f)=>{const b=document.createElement('button');b.textContent=t;b.style.padding='4px 11px';b.onclick=f;return b;};
     const n=document.createElement('span');n.textContent=g.unknown?'—':g.size;n.style.cssText='min-width:20px;text-align:center;font-weight:500;';
     const uk=document.createElement('button');uk.textContent='unknown num';uk.className=g.unknown?'on':'';uk.style.padding='4px 9px';uk.onclick=()=>{g.unknown=!g.unknown;grid();list();};
