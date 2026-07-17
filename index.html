@@ -135,7 +135,7 @@ function list(){const d=document.getElementById('groups');d.innerHTML='';
     if(g.unknown){row.append(n,uk,dr,tv,sp,rm);}
     else{row.append(mk('−',()=>{g.size=Math.max(1,g.size-1);grid();list();}),n,mk('+',()=>{g.size++;grid();list();}),uk,dr,tv,sp,rm);}
     d.appendChild(row);});}
-function highlightRow(i){const d=document.getElementById('groups');const row=d.querySelector('[data-gi="'+i+'"]');if(!row)return;
+function highlightRow(i){const rows=document.getElementById('groups').querySelectorAll('.grp');const row=rows[i];if(!row)return;
   row.scrollIntoView({behavior:'smooth',block:'center'});
   row.classList.remove('flash');void row.offsetWidth;row.classList.add('flash');}
 function recolor(){cur.forEach((g,i)=>g.color=COLORS[i%COLORS.length]);}
