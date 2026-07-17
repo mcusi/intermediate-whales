@@ -71,6 +71,8 @@ const LABELS=['100','300','500','1km',''],RINGDIST=[100,300,500,1000,1000];
 const SPEEDS=[['','speed'],['fast','fast'],['medium','medium'],['slow','slow']];
 const TRAVELS=[['','state'],['directional','directional'],['non-directional','non-directional'],['milling','milling'],['stationary', 'stationary'],['cuddle-puddle', 'cuddle-puddle'],['beach rubbing','beach rubbing'],['other','other']];
 let cur=[],log=JSON.parse(localStorage.getItem('orcaLog')||'[]'),mode='csv';
+let letterSeq=0;
+function nextLetter(){const L=String.fromCharCode(65+(letterSeq%26));letterSeq++;return L;}
 function ns(t,a){const e=document.createElementNS('http://www.w3.org/2000/svg',t);for(k in a)e.setAttribute(k,a[k]);return e;}
 function grid(){svg.innerHTML='';
   for(let i=1;i<=5;i++){const rr=R*i/5,outer=i===5;
@@ -94,7 +96,7 @@ function conv(px,py){const dx=px-C,dy=py-C,rp=Math.hypot(dx,dy);let deg=Math.ata
 let downXY=null,dragIdx=-1,dragging=false,activeId=null;
 function toPlot(cx,cy){const r=svg.getBoundingClientRect();return[(cx-r.left)/r.width*S,(cy-r.top)/r.height*S];}
 function place(cx,cy){const[px,py]=toPlot(cx,cy);if(Math.hypot(px-C,py-C)>R)return;
-  cur.push({px:px,py:py,size:1,drone:false,unknown:false,speed:'',travel:'',color:COLORS[cur.length%COLORS.length],...conv(px,py)});grid();list();}
+  cur.push({px:px,py:py,size:1,drone:false,unknown:false,speed:'',travel:'',letter:nextLetter(),color:COLORS[cur.length%COLORS.length],...conv(px,py)});grid();list();}
 function hitDot(px,py){for(let i=cur.length-1;i>=0;i--){if(Math.hypot(px-cur[i].px,py-cur[i].py)<=18)return i;}return -1;}
 function moveTo(i,cx,cy){let[px,py]=toPlot(cx,cy);const d=Math.hypot(px-C,py-C);if(d>R){px=C+(px-C)*R/d;py=C+(py-C)*R/d;}
   const g=cur[i];g.px=px;g.py=py;Object.assign(g,conv(px,py));grid();list();}
@@ -113,7 +115,9 @@ function mkSel(opts,val,cb){const s=document.createElement('select');opts.forEac
 function list(){const d=document.getElementById('groups');d.innerHTML='';
   document.getElementById('sel').textContent=cur.length?cur.length+' group(s) this scan':'Tap the plot to add a group.';
   cur.forEach((g,i)=>{const row=document.createElement('div');row.className='grp';
+    const lt=document.createElement('span');lt.textContent=g.letter;lt.style.cssText='font-weight:700;min-width:16px;text-align:center;';
     const sw=document.createElement('span');sw.className='dot';sw.style.background=g.color;
+    row.dataset.gi=i;
     const mk=(t,f)=>{const b=document.createElement('button');b.textContent=t;b.style.padding='4px 11px';b.onclick=f;return b;};
     const n=document.createElement('span');n.textContent=g.unknown?'—':g.size;n.style.cssText='min-width:20px;text-align:center;font-weight:500;';
     const uk=document.createElement('button');uk.textContent='unknown num';uk.className=g.unknown?'on':'';uk.style.padding='4px 9px';uk.onclick=()=>{g.unknown=!g.unknown;grid();list();};
@@ -121,7 +125,7 @@ function list(){const d=document.getElementById('groups');d.innerHTML='';
     const sp=mkSel(SPEEDS,g.speed,v=>g.speed=v);
     const tv=mkSel(TRAVELS,g.travel,v=>g.travel=v);
     const rm=mk('✕',()=>{cur.splice(i,1);recolor();grid();list();});rm.style.color='var(--text-danger,#a32d2d)';
-    row.append(sw);
+    row.append(lt,sw);
     if(g.unknown){row.append(n,uk,dr,tv,sp,rm);}
     else{row.append(mk('−',()=>{g.size=Math.max(1,g.size-1);grid();list();}),n,mk('+',()=>{g.size++;grid();list();}),uk,dr,tv,sp,rm);}
     d.appendChild(row);});}
@@ -129,18 +133,18 @@ function recolor(){cur.forEach((g,i)=>g.color=COLORS[i%COLORS.length]);}
 function upd(){document.getElementById('count').textContent=log.length+' scans saved';}
 document.getElementById('save').onclick=()=>{if(!cur.length)return;const now=new Date();
   log.push({ts_utc:now.toISOString(),ts_device:now.toString(),
-    groups:cur.map(g=>({dist_m:g.dist,clock:g.clock,bearing_deg:g.bearing,size:g.unknown?null:g.size,unknown_size:g.unknown,drone:g.drone,speed:g.speed,travel_type:g.travel}))});
-  localStorage.setItem('orcaLog',JSON.stringify(log));cur=[];grid();list();upd();};
+    groups:cur.map(g=>({letter:g.letter,dist_m:g.dist,clock:g.clock,bearing_deg:g.bearing,size:g.unknown?null:g.size,unknown_size:g.unknown,drone:g.drone,speed:g.speed,travel_type:g.travel}))});
+  localStorage.setItem('orcaLog',JSON.stringify(log));cur=[];letterSeq=0;grid();list();upd();};
 document.getElementById('undo').onclick=()=>{cur.pop();grid();list();};
-document.getElementById('clear').onclick=()=>{cur=[];grid();list();};
+document.getElementById('clear').onclick=()=>{cur=[];letterSeq=0;grid();list();};
 const menu=document.getElementById('menu');
 document.getElementById('menubtn').onclick=()=>{menu.style.display=menu.style.display==='none'?'block':'none';};
 document.addEventListener('click',e=>{if(!e.target.closest('#menu')&&e.target.id!=='menubtn')menu.style.display='none';});
 document.getElementById('erase').onclick=()=>{if(confirm('Erase ALL saved scans? Make sure you have exported first. This cannot be undone.')){
   if(confirm('Are you sure? This permanently deletes everything.')){log=[];localStorage.removeItem('orcaLog');upd();document.getElementById('out').value='';menu.style.display='none';}}};
 function csvcell(v){const s=String(v);return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
-function toCSV(){let r=['scan_ts_utc,scan_ts_device,group_n,distance_m,clock_hour,rel_bearing_deg,group_size,unknown_size,drone,speed,travel_type'];
-  log.forEach(s=>s.groups.forEach((g,i)=>r.push([s.ts_utc,csvcell(s.ts_device),i+1,g.dist_m,g.clock,g.bearing_deg,g.unknown_size?'NA':g.size,g.unknown_size?'True':'False',g.drone?'True':'False',g.speed||'',g.travel_type||''].join(','))));return r.join('\n');}
+function toCSV(){let r=['scan_ts_utc,scan_ts_device,group_n,group_letter,distance_m,clock_hour,rel_bearing_deg,group_size,unknown_size,drone,speed,travel_type'];
+  log.forEach(s=>s.groups.forEach((g,i)=>r.push([s.ts_utc,csvcell(s.ts_device),i+1,g.letter||'',g.dist_m,g.clock,g.bearing_deg,(g.drone||g.unknown_size)?'NA':g.size,g.unknown_size?'True':'False',g.drone?'True':'False',g.speed||'',g.travel_type||''].join(','))));return r.join('\n');}
 function flash(t){const m=document.getElementById('msg');m.textContent=t;setTimeout(()=>m.textContent='',2500);}
 document.getElementById('csv').onclick=()=>{mode='csv';document.getElementById('out').value=toCSV()||'(no scans saved yet)';};
 document.getElementById('json').onclick=()=>{mode='json';document.getElementById('out').value=JSON.stringify(log,null,2);};
