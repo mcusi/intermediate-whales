@@ -136,7 +136,7 @@ document.getElementById('save').onclick=()=>{if(!cur.length)return;const now=new
     groups:cur.map(g=>({letter:g.letter,dist_m:g.dist,clock:g.clock,bearing_deg:g.bearing,size:g.unknown?null:g.size,unknown_size:g.unknown,drone:g.drone,speed:g.speed,travel_type:g.travel}))});
   localStorage.setItem('orcaLog',JSON.stringify(log));cur=[];letterSeq=0;multiDir=false;document.getElementById('multidir').className='';grid();list();upd();};
 document.getElementById('undo').onclick=()=>{cur.pop();grid();list();};
-document.getElementById('clear').onclick=()=>{cur=[];letterSeq=0;grid();list();};
+document.getElementById('clear').onclick=()=>{cur=[];letterSeq=0;multiDir=false;document.getElementById('multidir').className='';grid();list();};
 document.getElementById('multidir').onclick=e=>{multiDir=!multiDir;e.target.className=multiDir?'on':'';};
 const menu=document.getElementById('menu');
 document.getElementById('menubtn').onclick=()=>{menu.style.display=menu.style.display==='none'?'block':'none';};
