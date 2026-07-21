@@ -16,6 +16,7 @@ body{margin:0;font-family:-apple-system,system-ui,sans-serif;background:var(--bg
 h1{font-size:18px;font-weight:500;margin:0;}
 button{font:inherit;font-size:15px;background:var(--surf);color:var(--txt);border:0.5px solid var(--bd);border-radius:8px;padding:10px 14px;cursor:pointer;}
 button:active{transform:scale(.97);}
+button:disabled{opacity:0.4;cursor:default;}
 button.primary{border-color:var(--acc);color:var(--acc);}
 button.on{background:var(--accbg);border-color:var(--acc);color:var(--acc);}
 select{font:inherit;font-size:14px;background:var(--surf);color:var(--txt);border:0.5px solid var(--bd);border-radius:8px;padding:5px 22px 5px 8px;width:72px;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;}
@@ -131,13 +132,17 @@ function list(){const d=document.getElementById('groups');d.innerHTML='';
     row.append(lt,sw);
     if(g.unknown){row.append(n,uk,dr,tv,sp,rm);}
     else{row.append(mk('−',()=>{g.size=Math.max(1,g.size-1);grid();list();}),n,mk('+',()=>{g.size++;grid();list();}),uk,dr,tv,sp,rm);}
-    d.appendChild(row);});}
+    d.appendChild(row);});
+    document.getElementById('save').disabled=cur.length===0;
+    document.getElementById('saveempty').disabled=cur.length>0;}
 function recolor(){cur.forEach((g,i)=>g.color=COLORS[i%COLORS.length]);}
 function upd(){document.getElementById('count').textContent=log.length+' scans saved';}
-document.getElementById('save').onclick=()=>{if(!cur.length)return;const now=new Date();
-  log.push({ts_utc:now.toISOString(),ts_device:now.toString(),multi_directional:multiDir,
-    groups:cur.map(g=>({letter:g.letter,dist_m:g.dist,clock:g.clock,bearing_deg:g.bearing,size:g.unknown?null:g.size,unknown_size:g.unknown,drone:g.drone,speed:g.speed,travel_type:g.travel}))});
-  localStorage.setItem('orcaLog',JSON.stringify(log));cur=[];letterSeq=0;multiDir=false;document.getElementById('multidir').className='';grid();list();upd();};
+function saveScan(noSightings){const now=new Date();
+  log.push({ts_utc:now.toISOString(),ts_device:now.toString(),multi_directional:multiDir,no_sightings:!!noSightings,
+    groups:noSightings?[]:cur.map(g=>({letter:g.letter,dist_m:g.dist,clock:g.clock,bearing_deg:g.bearing,size:g.unknown?null:g.size,unknown_size:g.unknown,drone:g.drone,speed:g.speed,travel_type:g.travel}))});
+  localStorage.setItem('orcaLog',JSON.stringify(log));cur=[];letterSeq=0;multiDir=false;document.getElementById('multidir').className='';grid();list();upd();}
+document.getElementById('save').onclick=()=>{if(!cur.length)return;saveScan(false);};
+document.getElementById('saveempty').onclick=()=>{if(cur.length)return;saveScan(true);};
 document.getElementById('undo').onclick=()=>{cur.pop();grid();list();};
 document.getElementById('clear').onclick=()=>{cur=[];letterSeq=0;multiDir=false;document.getElementById('multidir').className='';grid();list();};
 document.getElementById('multidir').onclick=e=>{multiDir=!multiDir;e.target.className=multiDir?'on':'';};
@@ -147,8 +152,9 @@ document.addEventListener('click',e=>{if(!e.target.closest('#menu')&&e.target.id
 document.getElementById('erase').onclick=()=>{if(confirm('Erase ALL saved scans? Make sure you have exported first. This cannot be undone.')){
   if(confirm('Are you sure? This permanently deletes everything.')){log=[];localStorage.removeItem('orcaLog');upd();document.getElementById('out').value='';menu.style.display='none';}}};
 function csvcell(v){const s=String(v);return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
-function toCSV(){let r=['scan_ts_utc,scan_ts_device,group_n,group_letter,distance_m,clock_hour,rel_bearing_deg,group_size,unknown_size,drone,speed,travel_type,multi_directional'];
-  log.forEach(s=>s.groups.forEach((g,i)=>r.push([s.ts_utc,csvcell(s.ts_device),i+1,g.letter||'',g.dist_m,g.clock,g.bearing_deg,g.unknown_size?'NA':g.size,g.unknown_size?'True':'False',g.drone?'True':'False',g.speed||'',g.travel_type||'',s.multi_directional?'True':'False'].join(','))));return r.join('\n');}
+function toCSV(){let r=['scan_ts_utc,scan_ts_device,group_n,group_letter,distance_m,clock_hour,rel_bearing_deg,group_size,unknown_size,drone,speed,travel_type,multi_directional,no_sightings'];
+  log.forEach(s=>{if(s.no_sightings){r.push([s.ts_utc,csvcell(s.ts_device),'NA','NA','NA','NA','NA','NA','NA','NA','NA','NA','NA','True'].join(','));}
+    else s.groups.forEach((g,i)=>r.push([s.ts_utc,csvcell(s.ts_device),i+1,g.letter||'',g.dist_m,g.clock,g.bearing_deg,g.unknown_size?'NA':g.size,g.unknown_size?'True':'False',g.drone?'True':'False',g.speed||'',g.travel_type||'',s.multi_directional?'True':'False','False'].join(','));});return r.join('\n');}
 function flash(t){const m=document.getElementById('msg');m.textContent=t;setTimeout(()=>m.textContent='',2500);}
 document.getElementById('csv').onclick=()=>{mode='csv';document.getElementById('out').value=toCSV()||'(no scans saved yet)';};
 document.getElementById('json').onclick=()=>{mode='json';document.getElementById('out').value=JSON.stringify(log,null,2);};
