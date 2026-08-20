@@ -72,7 +72,8 @@ const S=360,C=180,R=150,svg=document.getElementById('plot');
 const dark=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;
 const GRID=dark?'#555':'#ccc',NUM=dark?'#b4b2a9':'#5f5e5a',FAINT=dark?'#888':'#999',RING=dark?'#2c2c2a':'#fff';
 const COLORS=['#185fa5','#d85a30','#1d9e75','#d4537e','#ba7517','#7f77dd','#639922','#e24b4a','#0f6e56','#993556'];
-const LABELS=['100','300','500','1km',''],RINGDIST=[100,300,500,1000,1000];
+const LABELS=['100','300','500','1km',''];
+const RINGFRAC=[0.30,0.48,0.62,0.82,1.0],RINGDIST=[100,300,500,1000,1000];
 const SPEEDS=[['','speed'],['fast','fast'],['medium','medium'],['slow','slow']];
 const TRAVELS=[['','state'],['directional','directional'],['non-directional','non-directional'],['milling','milling'],['stationary','stationary'],['cuddle-puddle','cuddle-puddle'],['beach rubbing','beach rubbing'],['other','other']];
 let cur=[],log=JSON.parse(localStorage.getItem('orcaLog')||'[]'),mode='csv',multiDir=false;
@@ -80,7 +81,7 @@ let letterSeq=0;
 function nextLetter(){const L=String.fromCharCode(65+(letterSeq%26));letterSeq++;return L;}
 function ns(t,a){const e=document.createElementNS('http://www.w3.org/2000/svg',t);for(k in a)e.setAttribute(k,a[k]);return e;}
 function grid(){svg.innerHTML='';
-  for(let i=1;i<=5;i++){const rr=R*i/5,outer=i===5;
+  for(let i=1;i<=5;i++){const rr=R*RINGFRAC[i-1],outer=i===5;
     const c=ns('circle',{cx:C,cy:C,r:rr,fill:'none',stroke:GRID,'stroke-width':'1'});
     if(outer)c.setAttribute('stroke-dasharray','4 4');svg.appendChild(c);
     if(LABELS[i-1]){const t=ns('text',{x:C+3,y:C-rr+13,'font-size':'11',fill:FAINT});t.textContent=LABELS[i-1];svg.appendChild(t);}}
@@ -95,8 +96,11 @@ function grid(){svg.innerHTML='';
       if(g.drone){const st=ns('text',{x:g.px+13,y:g.py-7,'font-size':'16',fill:g.color,'text-anchor':'middle','font-weight':'700'});st.textContent='*';svg.appendChild(st);}});}
 function conv(px,py){const dx=px-C,dy=py-C,rp=Math.hypot(dx,dy);let deg=Math.atan2(dx,-dy)*180/Math.PI;if(deg<0)deg+=360;
   let ch=Math.round(deg/30);if(ch===0)ch=12;
-  const frac=Math.min(rp/R,1)*5,seg=Math.min(Math.floor(frac),4),lo=seg===0?0:RINGDIST[seg-1],hi=RINGDIST[seg];
-  let dist=Math.round(lo+(hi-lo)*(frac-seg));if(rp/R>=1)dist=Math.round(1000+(rp/R-1)*1000);
+  const f=rp/R;let dist;
+  if(f>=1){dist=Math.round(1000+(f-1)/(1-RINGFRAC[3])*1000);}
+  else{let seg=0;while(seg<RINGFRAC.length&&f>RINGFRAC[seg])seg++;
+    const loF=seg===0?0:RINGFRAC[seg-1],hiF=RINGFRAC[seg],loD=seg===0?0:RINGDIST[seg-1],hiD=RINGDIST[seg];
+    dist=Math.round(loD+(hiD-loD)*(f-loF)/(hiF-loF));}
   return{dist:dist,bearing:Math.round(deg),clock:ch};}
 let downXY=null,dragIdx=-1,dragging=false,activeId=null;
 function toPlot(cx,cy){const r=svg.getBoundingClientRect();return[(cx-r.left)/r.width*S,(cy-r.top)/r.height*S];}
