@@ -73,7 +73,7 @@ const dark=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').
 const GRID=dark?'#555':'#ccc',NUM=dark?'#b4b2a9':'#5f5e5a',FAINT=dark?'#888':'#999',RING=dark?'#2c2c2a':'#fff';
 const COLORS=['#185fa5','#d85a30','#1d9e75','#d4537e','#ba7517','#7f77dd','#639922','#e24b4a','#0f6e56','#993556'];
 const LABELS=['100','300','500','1km',''];
-const RINGFRAC=[0.30,0.48,0.62,0.82,1.0],RINGDIST=[100,300,500,1000,1000];
+const RINGFRAC=[0.35,0.52,0.78,0.96,1.0],RINGDIST=[100,300,500,1000,1000];
 const SPEEDS=[['','speed'],['fast','fast'],['medium','medium'],['slow','slow']];
 const TRAVELS=[['','state'],['directional','directional'],['non-directional','non-directional'],['milling','milling'],['stationary','stationary'],['cuddle-puddle','cuddle-puddle'],['beach rubbing','beach rubbing'],['other','other']];
 let cur=[],log=JSON.parse(localStorage.getItem('orcaLog')||'[]'),mode='csv',multiDir=false;
